@@ -15,6 +15,16 @@
 // V24_CHANNEL_UNIFIED_SINGLE_SOURCE
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import {
+  tapHaptic,
+  successHaptic,
+  warningHaptic,
+  shareResults,
+  saveToNativeStorage,
+  loadFromNativeStorage,
+  removeFromNativeStorage,
+  getAllNativeStorageKeys,
+} from "./native.js";
 
 // V43_CORE_SPLIT_STRADDLE_DIMENSION_LABELS
 // バー材も「線を作る → 線を描く → 線から本数結果を出す」に統一
@@ -42,7 +52,6 @@ const barPitchOptions = [
 ];
 
 export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
   const [page, setPage] = useState(1);
   const [projectName, setProjectName] = useState("");
   const [shape, setShape] = useState(makeShape(defaultPoints));
@@ -62,65 +71,208 @@ export default function App() {
   const [showSavedRooms, setShowSavedRooms] = useState(false);
   const [savedRooms, setSavedRooms] = useState([]);
   const [selectedSavedRoom, setSelectedSavedRoom] = useState(null);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [modal, setModal] = useState(null);
 
   const canvasRef = useRef(null);
+  const canvasReady = useRef(false);
   const drawing = useRef(false);
   const pointsRef = useRef([]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 900);
-    return () => clearTimeout(timer);
+    const preventHorizontalScroll = () => {
+      if (window.scrollX !== 0) {
+        window.scrollTo(0, window.scrollY);
+      }
+    };
+    window.addEventListener("scroll", preventHorizontalScroll);
+
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+    const preventHorizontalTouch = (e) => {
+      if (e.touches.length !== 1) return;
+      const dx = Math.abs(e.touches[0].clientX - lastTouchX);
+      const dy = Math.abs(e.touches[0].clientY - lastTouchY);
+      if (dx > dy && dx > 4) {
+        e.preventDefault();
+      }
+    };
+    const recordTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        lastTouchX = e.touches[0].clientX;
+        lastTouchY = e.touches[0].clientY;
+      }
+    };
+    document.addEventListener("touchstart", recordTouchStart, { passive: true });
+    document.addEventListener("touchmove", preventHorizontalTouch, { passive: false });
+
+    return () => {
+      window.removeEventListener("scroll", preventHorizontalScroll);
+      document.removeEventListener("touchstart", recordTouchStart);
+      document.removeEventListener("touchmove", preventHorizontalTouch);
+    };
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    }, 0);
-
-    return () => clearTimeout(timer);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+    document.documentElement.scrollTop = 0;
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+    });
   }, [page]);
+
+  const showAlert = (message) => {
+    return new Promise((resolve) => {
+      setModal({ type: "alert", message, resolve });
+    });
+  };
+
+  const showConfirm = (message) => {
+    return new Promise((resolve) => {
+      setModal({ type: "confirm", message, resolve });
+    });
+  };
+
+  const showPrompt = (message, defaultValue = "") => {
+    return new Promise((resolve) => {
+      setModal({ type: "prompt", message, defaultValue, resolve });
+    });
+  };
+
+  const closeModal = (result) => {
+    if (modal && modal.resolve) modal.resolve(result);
+    setModal(null);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    canvasReady.current = false;
 
-    const resize = () => {
+    const applyCanvasSize = () => {
+      void canvas.offsetHeight;
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+      const cssW = Math.round(rect.width);
+      const cssH = Math.round(rect.height);
+      if (cssW < 50 || cssH < 50) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const targetW = Math.round(cssW * dpr);
+      const targetH = Math.round(cssH * dpr);
+      if (canvas.width === targetW && canvas.height === targetH) {
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        canvasReady.current = true;
+        return;
+      }
+
+      canvas.width = targetW;
+      canvas.height = targetH;
+      canvas.style.width = cssW + "px";
+      canvas.style.height = cssH + "px";
       const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.lineWidth = 4;
       ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.strokeStyle = "#111827";
+      canvasReady.current = true;
     };
 
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    applyCanvasSize();
+    let raf2, raf3;
+    const raf1 = requestAnimationFrame(() => {
+      applyCanvasSize();
+      raf2 = requestAnimationFrame(() => {
+        applyCanvasSize();
+        raf3 = requestAnimationFrame(() => {
+          applyCanvasSize();
+        });
+      });
+    });
+
+    const ro = new ResizeObserver(() => applyCanvasSize());
+    ro.observe(canvas);
+
+    window.addEventListener("resize", applyCanvasSize);
+
+    const preventScroll = (e) => e.preventDefault();
+    canvas.addEventListener("touchstart", preventScroll, { passive: false });
+    canvas.addEventListener("touchmove", preventScroll, { passive: false });
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+      if (raf3) cancelAnimationFrame(raf3);
+      ro.disconnect();
+      window.removeEventListener("resize", applyCanvasSize);
+      canvas.removeEventListener("touchstart", preventScroll);
+      canvas.removeEventListener("touchmove", preventScroll);
+    };
   }, [page]);
+
+  const ensureCanvasSize = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    void canvas.offsetHeight;
+
+    const rect = canvas.getBoundingClientRect();
+    const cssW = Math.round(rect.width);
+    const cssH = Math.round(rect.height);
+    if (cssW < 50 || cssH < 50) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const targetW = Math.round(cssW * dpr);
+    const targetH = Math.round(cssH * dpr);
+
+    const ctx = canvas.getContext("2d");
+
+    if (canvas.width === targetW && canvas.height === targetH) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return;
+    }
+
+    canvas.width = targetW;
+    canvas.height = targetH;
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#111827";
+    canvasReady.current = true;
+  };
 
   const getPoint = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const p = e.touches ? e.touches[0] : e;
-
     return {
-      x: p.clientX - rect.left,
-      y: p.clientY - rect.top,
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
     };
   };
 
   const startDraw = (e) => {
     e.preventDefault();
+    ensureCanvasSize();
+    e.target.setPointerCapture(e.pointerId);
     drawing.current = true;
     pointsRef.current = [];
 
     const p = getPoint(e);
     pointsRef.current.push(p);
 
+    const dpr = window.devicePixelRatio || 1;
     const ctx = canvasRef.current.getContext("2d");
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#111827";
   };
 
   const draw = (e) => {
@@ -133,14 +285,27 @@ export default function App() {
 
     if (!last || distance(last, p) > 5) {
       arr.push(p);
+    } else {
+      return;
     }
 
+    const dpr = window.devicePixelRatio || 1;
     const ctx = canvasRef.current.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#111827";
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
   };
 
-  const endDraw = () => {
+  const endDraw = (e) => {
+    if (drawing.current && e && e.target && e.pointerId !== undefined) {
+      e.target.releasePointerCapture(e.pointerId);
+    }
     drawing.current = false;
   };
 
@@ -148,7 +313,11 @@ export default function App() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     pointsRef.current = [];
   };
 
@@ -164,6 +333,7 @@ export default function App() {
     setShape(made);
     setDims(nextDims);
     setPage(2);
+    tapHaptic();
   };
 
   const changeDim = (key, value) => {
@@ -191,69 +361,83 @@ export default function App() {
 
     const missingKeys = getMissingDimKeys(fixed, shape.edges);
     if (missingKeys.length) {
-      alert(`未入力の寸法があります：${missingKeys.join("、")}`);
+      showAlert(`未入力の寸法があります：${missingKeys.join("、")}`);
       return;
     }
 
     setPage(3);
+    successHaptic();
   };
 
   const results = makeResults(dims, settings, shape);
 
-  const loadSavedRooms = () => {
+  const loadSavedRooms = async () => {
     const rooms = [];
+    let keys;
+    try {
+      keys = await getAllNativeStorageKeys();
+    } catch (e) {
+      console.error("Failed to load storage keys:", e);
+      return [];
+    }
 
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    for (const key of keys) {
       if (!key || !key.startsWith("ceiling-")) continue;
 
       try {
-        const data = JSON.parse(localStorage.getItem(key));
+        const raw = await loadFromNativeStorage(key);
+        const data = JSON.parse(raw);
         rooms.push({ key, ...data });
-      } catch {
-        // 壊れた保存データは無視
+      } catch (e) {
+        console.warn(`Skipped corrupted data (key: ${key}):`, e);
       }
     }
 
     return rooms.sort((a, b) => String(b.key).localeCompare(String(a.key)));
   };
 
-  const openSavedRooms = () => {
+  const openSavedRooms = async () => {
+    await tapHaptic();
     setSelectedSavedRoom(null);
-    setSavedRooms(loadSavedRooms());
+    setSavedRooms(await loadSavedRooms());
     setShowSavedRooms(true);
   };
 
-  const deleteSavedRoom = (key) => {
-    if (!confirm("この保存データを削除しますか？")) return;
-    localStorage.removeItem(key);
-    setSavedRooms(loadSavedRooms());
+  const deleteSavedRoom = async (key) => {
+    const confirmed = await showConfirm("この保存データを削除しますか？");
+    if (!confirmed) return;
+    await warningHaptic();
+    await removeFromNativeStorage(key);
+    setSavedRooms(await loadSavedRooms());
   };
 
-  const renameSavedRoom = (key, currentName = "") => {
-    const nextName = prompt("新しい部屋名を入力してください", currentName || "未入力");
+  const renameSavedRoom = async (key, currentName = "") => {
+    const nextName = await showPrompt("新しい部屋名を入力してください", currentName || "未入力");
     if (nextName === null) return;
 
     const cleanName = nextName.trim() || "未入力";
 
     try {
-      const data = JSON.parse(localStorage.getItem(key));
+      const raw = await loadFromNativeStorage(key);
+      const data = JSON.parse(raw);
       if (!data) return;
 
       data.name = cleanName;
-      localStorage.setItem(key, JSON.stringify(data));
+      await saveToNativeStorage(key, JSON.stringify(data));
+      await tapHaptic();
 
-      const rooms = loadSavedRooms();
+      const rooms = await loadSavedRooms();
       setSavedRooms(rooms);
       setSelectedSavedRoom((prev) =>
         prev && prev.key === key ? { ...prev, name: cleanName } : prev
       );
-    } catch {
-      alert("名称変更に失敗しました");
+    } catch (e) {
+      console.error("Rename failed:", e);
+      showAlert("名称変更に失敗しました");
     }
   };
 
-  const saveData = () => {
+  const saveData = async () => {
     const data = {
       name: projectName || "未入力",
       dims,
@@ -263,14 +447,29 @@ export default function App() {
       savedAt: new Date().toLocaleString(),
     };
 
-    localStorage.setItem(`ceiling-${Date.now()}`, JSON.stringify(data));
-    setSavedRooms(loadSavedRooms());
-    alert("保存しました");
+    try {
+      await saveToNativeStorage(`ceiling-${Date.now()}`, JSON.stringify(data));
+      setSavedRooms(await loadSavedRooms());
+      await successHaptic();
+      showAlert("保存しました");
+    } catch (e) {
+      console.error("Save failed:", e);
+      showAlert("保存に失敗しました。端末のストレージ容量を確認してください。");
+    }
   };
 
-  if (showSplash) {
-    return <SplashScreen />;
-  }
+  const handleShareResults = async () => {
+    await tapHaptic();
+    const lines = results.map((item) => `${item.name}: ${item.value}`);
+    const text = [
+      `【${projectName || "未入力"}】軽天拾い出し結果`,
+      "",
+      ...lines,
+      "",
+      `設定: バーピッチ ${settings.barPitch}(w${settings.barW})`,
+    ].join("\n");
+    await shareResults("軽天拾い出し結果", text);
+  };
 
   return (
     <div className="app">
@@ -287,16 +486,19 @@ export default function App() {
             </button>
           </div>
 
-          <section className="canvasBox">
+          <section className="canvasBox" aria-label="天井形状の手書き入力エリア">
             <canvas
               ref={canvasRef}
-              onMouseDown={startDraw}
-              onMouseMove={draw}
-              onMouseUp={endDraw}
-              onMouseLeave={endDraw}
-              onTouchStart={startDraw}
-              onTouchMove={draw}
-              onTouchEnd={endDraw}
+              width={1}
+              height={1}
+              role="img"
+              aria-label="天井の形を手書きで描いてください"
+              style={{ touchAction: "none" }}
+              onPointerDown={startDraw}
+              onPointerMove={draw}
+              onPointerUp={endDraw}
+              onPointerLeave={endDraw}
+              onPointerCancel={endDraw}
             />
           </section>
 
@@ -348,9 +550,10 @@ export default function App() {
               alignItems: "center",
               justifyContent: "center",
               width: "100%",
+              maxWidth: "100%",
               minHeight: !isLeftTopBarSetting(settings) ? 315 : undefined,
               marginBottom: 12,
-              overflow: "visible",
+              overflow: "hidden",
             }}
           >
             <CleanShape
@@ -430,6 +633,9 @@ export default function App() {
             <button className="saveBtn" onClick={saveData}>
               💾 保存
             </button>
+            <button className="shareBtn" onClick={handleShareResults}>
+              📤 結果を共有
+            </button>
           </section>
 
           <div className="pageNavButtons">
@@ -450,6 +656,10 @@ export default function App() {
           onDelete={deleteSavedRoom}
           onRename={renameSavedRoom}
           onOpen={(room) => setSelectedSavedRoom(room)}
+          onShowPrivacy={() => {
+            setShowSavedRooms(false);
+            setShowPrivacyPolicy(true);
+          }}
         />
       )}
 
@@ -460,22 +670,133 @@ export default function App() {
           onRename={renameSavedRoom}
         />
       )}
+
+      {showPrivacyPolicy && (
+        <PrivacyPolicyModal onClose={() => setShowPrivacyPolicy(false)} />
+      )}
+
+      {modal && (
+        <NativeModal modal={modal} onClose={closeModal} />
+      )}
     </div>
   );
 }
 
-function SplashScreen() {
+function PrivacyPolicyModal({ onClose }) {
   return (
-    <div className="splashPhoto" />
+    <div className="drawerOverlay">
+      <aside className="savedDrawer privacyDrawer">
+        <div className="drawerHeader">
+          <strong>プライバシーポリシー</strong>
+          <button onClick={onClose} aria-label="閉じる">×</button>
+        </div>
+        <div className="privacyContent">
+          <h3>軽天拾い出し プライバシーポリシー</h3>
+          <p>最終更新日：2026年7月18日</p>
+
+          <h4>1. 収集する情報</h4>
+          <p>
+            本アプリは、ユーザーの個人情報を一切収集しません。
+            入力された寸法データや計算結果は、すべてお使いの端末内にのみ保存され、
+            外部サーバーへの送信は行いません。
+          </p>
+
+          <h4>2. データの保存</h4>
+          <p>
+            本アプリで保存されるデータ（部屋の寸法、計算結果、プロジェクト名など）は、
+            すべてお使いの端末のローカルストレージに保存されます。
+            これらのデータはアプリをアンインストールすると削除されます。
+          </p>
+
+          <h4>3. 第三者への提供</h4>
+          <p>
+            本アプリはユーザーデータを第三者に提供、販売、共有することはありません。
+          </p>
+
+          <h4>4. 分析・トラッキング</h4>
+          <p>
+            本アプリはアクセス解析ツールやトラッキングツールを使用しません。
+            広告の表示も行いません。
+          </p>
+
+          <h4>5. お子様のプライバシー</h4>
+          <p>
+            本アプリは13歳未満のお子様を対象としたものではありません。
+            お子様から意図的に個人情報を収集することはありません。
+          </p>
+
+          <h4>6. ポリシーの変更</h4>
+          <p>
+            本プライバシーポリシーは予告なく変更される場合があります。
+            変更はアプリの更新を通じて通知されます。
+          </p>
+
+          <h4>7. お問い合わせ</h4>
+          <p>
+            本アプリに関するお問い合わせは、下記メールアドレスまでご連絡ください。
+          </p>
+          <p>メール：070@i.softbank.jp</p>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function NativeModal({ modal, onClose }) {
+  const [inputValue, setInputValue] = useState(modal.defaultValue || "");
+
+  return (
+    <div className="nativeModalOverlay" role="dialog" aria-modal="true" aria-label={modal.message}>
+      <div className="nativeModalBox">
+        <p className="nativeModalMessage">{modal.message}</p>
+
+        {modal.type === "prompt" && (
+          <input
+            className="nativeModalInput"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            autoFocus
+          />
+        )}
+
+        <div className="nativeModalActions">
+          {modal.type === "alert" && (
+            <button className="nativeModalBtn nativeModalBtnPrimary" onClick={() => onClose(true)}>
+              OK
+            </button>
+          )}
+          {modal.type === "confirm" && (
+            <>
+              <button className="nativeModalBtn nativeModalBtnCancel" onClick={() => onClose(false)}>
+                キャンセル
+              </button>
+              <button className="nativeModalBtn nativeModalBtnPrimary" onClick={() => onClose(true)}>
+                OK
+              </button>
+            </>
+          )}
+          {modal.type === "prompt" && (
+            <>
+              <button className="nativeModalBtn nativeModalBtnCancel" onClick={() => onClose(null)}>
+                キャンセル
+              </button>
+              <button className="nativeModalBtn nativeModalBtnPrimary" onClick={() => onClose(inputValue)}>
+                OK
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
 function Header({ title, onMenuClick }) {
   return (
-    <header className="header">
+    <header className="header" role="banner">
       <div className="spacer" />
       <h1>{title}</h1>
-      <button className="menu" onClick={onMenuClick}>☰</button>
+      <button className="menu" onClick={onMenuClick} aria-label="保存した部屋を開く">☰</button>
     </header>
   );
 }
@@ -601,13 +922,13 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false }) {
   );
 }
 
-function SavedRoomsPanel({ rooms, onClose, onDelete, onRename, onOpen }) {
+function SavedRoomsPanel({ rooms, onClose, onDelete, onRename, onOpen, onShowPrivacy }) {
   return (
     <div className="drawerOverlay">
       <aside className="savedDrawer">
         <div className="drawerHeader">
           <strong>保存した部屋</strong>
-          <button onClick={onClose}>×</button>
+          <button onClick={onClose} aria-label="閉じる">×</button>
         </div>
 
         {!rooms.length && <p className="emptySaved">保存データはまだありません。</p>}
@@ -635,6 +956,13 @@ function SavedRoomsPanel({ rooms, onClose, onDelete, onRename, onOpen }) {
             </div>
           ))}
         </div>
+
+        <div className="drawerFooter">
+          <button className="privacyLink" onClick={onShowPrivacy}>
+            プライバシーポリシー
+          </button>
+          <small className="appVersion">v1.0.0</small>
+        </div>
       </aside>
     </div>
   );
@@ -660,7 +988,7 @@ function SavedRoomDetail({ room, onClose, onRename }) {
             >
               名称変更
             </button>
-            <button className="detailCloseBtn" onClick={onClose}>×</button>
+            <button className="detailCloseBtn" onClick={onClose} aria-label="閉じる">×</button>
           </div>
         </div>
 

@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin-primary.dia",
+    "emit-module-dependencies" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin-primary-emit-module.dia",
+    "pch" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin-primary.swiftdeps"
+  },
+  "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/haptics/ios/Sources/HapticsPlugin/Haptics.swift" : {
+    "const-values" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/Haptics.swiftconstvalues",
+    "dependencies" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/Haptics.d",
+    "diagnostics" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/Haptics.dia",
+    "index-unit-output-path" : "/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/Haptics.o",
+    "llvm-bc" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/Haptics.bc",
+    "object" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/Haptics.o",
+    "swift-dependencies" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/Haptics.swiftdeps",
+    "swiftmodule" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/Haptics~partial.swiftmodule"
+  },
+  "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/haptics/ios/Sources/HapticsPlugin/HapticsPlugin.swift" : {
+    "const-values" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin.swiftconstvalues",
+    "dependencies" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin.d",
+    "diagnostics" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin.dia",
+    "index-unit-output-path" : "/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin.o",
+    "llvm-bc" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin.bc",
+    "object" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin.o",
+    "swift-dependencies" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin.swiftdeps",
+    "swiftmodule" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/Build/Intermediates.noindex/CapacitorHaptics.build/Debug-iphoneos/HapticsPlugin.build/Objects-normal/arm64/HapticsPlugin~partial.swiftmodule"
+  }
+}

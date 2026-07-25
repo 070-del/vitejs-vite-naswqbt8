@@ -1,0 +1,25 @@
+{
+  "appId": "com.keiten.hiroihashi",
+  "appName": "軽天拾い出し",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#fbfbf8",
+      "showSpinner": false,
+      "launchFadeOutDuration": 300
+    },
+    "StatusBar": {
+      "overlaysWebView": true,
+      "style": "DARK",
+      "backgroundColor": "#fbfbf8"
+    }
+  },
+  "ios": {
+    "scheme": "keiten-hiroihashi",
+    "allowsLinkPreview": false
+  }
+}

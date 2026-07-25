@@ -1,0 +1,153 @@
+{
+  "object" : {
+    "artifacts" : [
+      {
+        "kind" : {
+          "xcframework" : {
+
+          }
+        },
+        "packageRef" : {
+          "identity" : "capacitor-swift-pm",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/ionic-team/capacitor-swift-pm.git",
+          "name" : "capacitor-swift-pm"
+        },
+        "path" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/SourcePackages/artifacts/capacitor-swift-pm/Capacitor/Capacitor.xcframework",
+        "source" : {
+          "checksum" : "04665ab264967643e092a71740b0d619b087bc8949e71dacd410d10cc5e34f08",
+          "type" : "remote",
+          "url" : "https://github.com/ionic-team/capacitor-swift-pm/releases/download/8.4.1/Capacitor.xcframework.zip"
+        },
+        "targetName" : "Capacitor"
+      },
+      {
+        "kind" : {
+          "xcframework" : {
+
+          }
+        },
+        "packageRef" : {
+          "identity" : "capacitor-swift-pm",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/ionic-team/capacitor-swift-pm.git",
+          "name" : "capacitor-swift-pm"
+        },
+        "path" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/build_device/SourcePackages/artifacts/capacitor-swift-pm/Cordova/Cordova.xcframework",
+        "source" : {
+          "checksum" : "76172be2ff6f09c05b3fdd6e48b08f79f070d1c50c108a4539f31b24f3b3c838",
+          "type" : "remote",
+          "url" : "https://github.com/ionic-team/capacitor-swift-pm/releases/download/8.4.1/Cordova.xcframework.zip"
+        },
+        "targetName" : "Cordova"
+      }
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "capacitor-swift-pm",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/ionic-team/capacitor-swift-pm.git",
+          "name" : "capacitor-swift-pm"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "2231987d85b8b0b289320b1d0947b4ae8345cde4",
+            "version" : "8.4.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "capacitor-swift-pm"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "capapp-spm",
+          "kind" : "fileSystem",
+          "location" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/CapApp-SPM",
+          "name" : "CapApp-SPM"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/ios/App/CapApp-SPM"
+        },
+        "subpath" : "capapp-spm"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "haptics",
+          "kind" : "fileSystem",
+          "location" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/haptics",
+          "name" : "haptics"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/haptics"
+        },
+        "subpath" : "haptics"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "preferences",
+          "kind" : "fileSystem",
+          "location" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/preferences",
+          "name" : "preferences"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/preferences"
+        },
+        "subpath" : "preferences"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "share",
+          "kind" : "fileSystem",
+          "location" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/share",
+          "name" : "share"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/share"
+        },
+        "subpath" : "share"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "splash-screen",
+          "kind" : "fileSystem",
+          "location" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/splash-screen",
+          "name" : "splash-screen"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/splash-screen"
+        },
+        "subpath" : "splash-screen"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "status-bar",
+          "kind" : "fileSystem",
+          "location" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/status-bar",
+          "name" : "status-bar"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/kkbouu/Documents/GitHub/vitejs-vite-naswqbt8/node_modules/@capacitor/status-bar"
+        },
+        "subpath" : "status-bar"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}
