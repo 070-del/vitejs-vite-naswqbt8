@@ -8,8 +8,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UIScrollViewDelegate {
     private var scrollDelegateConfigured = false
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.configureWebViewScrollBehavior()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.configureWebView()
         }
         return true
     }
@@ -24,7 +24,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UIScrollViewDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        configureWebViewScrollBehavior()
+        configureWebView()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -38,19 +38,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UIScrollViewDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
-    private func configureWebViewScrollBehavior() {
+    private func configureWebView() {
         guard let rootVC = window?.rootViewController as? CAPBridgeViewController,
               let wv = rootVC.webView else { return }
+
         wv.scrollView.alwaysBounceHorizontal = false
         wv.scrollView.showsHorizontalScrollIndicator = false
         wv.scrollView.isDirectionalLockEnabled = true
+        wv.scrollView.contentInsetAdjustmentBehavior = .never
+
         if wv.scrollView.contentOffset.x != 0 {
             wv.scrollView.contentOffset.x = 0
         }
+
         if !scrollDelegateConfigured {
             wv.scrollView.delegate = self
             scrollDelegateConfigured = true
         }
+
+        let screenBounds = UIScreen.main.bounds
+        rootVC.view.frame = screenBounds
+        wv.frame = rootVC.view.bounds
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {

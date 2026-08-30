@@ -1,7 +1,7 @@
 {
-  "name": "軽天拾い出し",
-  "short_name": "軽天拾い",
-  "description": "軽天・天井下地材の拾い出し支援アプリ",
+  "name": "軽天計算",
+  "short_name": "軽天計算",
+  "description": "軽天工事の天井材計算ツール",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

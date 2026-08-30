@@ -1116,7 +1116,8 @@ body {
 
 /* app chrome */
 .header {
-  height: calc(82px + env(safe-area-inset-top, 0px));
+  height: calc(82px + max(env(safe-area-inset-top, 0px), 44px));
+  padding-top: max(env(safe-area-inset-top, 0px), 44px);
   background: rgba(255, 255, 253, 0.88);
   backdrop-filter: blur(18px);
   border-bottom: 1px solid rgba(217, 217, 212, 0.9);
@@ -1279,7 +1280,8 @@ body {
 
 @media (max-width: 430px) {
   .header {
-    height: calc(76px + env(safe-area-inset-top, 0px));
+    height: calc(76px + max(env(safe-area-inset-top, 0px), 44px));
+    padding-top: max(env(safe-area-inset-top, 0px), 44px);
   }
 
   .canvasBox {
@@ -1495,4 +1497,225 @@ body {
 .nativeModalBtnCancel {
   background: #f3f4f6;
   color: #374151;
+}
+
+.paywallLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #fff;
+}
+
+.paywallSpinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #111827;
+  border-radius: 50%;
+  animation: paywallSpin 0.7s linear infinite;
+}
+
+@keyframes paywallSpin {
+  to { transform: rotate(360deg); }
+}
+
+.paywall {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top, 20px) 24px calc(env(safe-area-inset-bottom, 0px) + 20px);
+}
+
+.paywallContent {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.paywallIcon {
+  font-size: 64px;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.paywallTitle {
+  font-size: 26px;
+  font-weight: 900;
+  color: #111827;
+  margin: 0 0 4px;
+  letter-spacing: -0.02em;
+}
+
+.paywallSubtitle {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0 0 28px;
+  font-weight: 500;
+}
+
+.paywallFeatures {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 28px;
+  width: 100%;
+  text-align: left;
+}
+
+.paywallFeatures li {
+  padding: 10px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.paywallFeatures li::before {
+  content: "✓";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.paywallPriceBox {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 2px;
+  margin-bottom: 24px;
+}
+
+.paywallPlanName {
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.paywallPrice {
+  font-size: 36px;
+  font-weight: 900;
+  color: #111827;
+  letter-spacing: -0.02em;
+}
+
+.paywallPeriod {
+  font-size: 16px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.paywallSubscribeBtn {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: 14px;
+  background: #111827;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: opacity 0.15s;
+}
+
+.paywallSubscribeBtn:active {
+  opacity: 0.8;
+}
+
+.paywallSubscribeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.paywallRestoreBtn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+
+.paywallRestoreBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.paywallError {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.paywallError p {
+  font-size: 13px;
+  color: #f87171;
+  margin: 0;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.paywallLegal {
+  width: 100%;
+}
+
+.paywallLegal p {
+  font-size: 10.5px;
+  color: #9ca3af;
+  line-height: 1.6;
+  margin: 0 0 12px;
+  text-align: left;
+}
+
+.paywallLinks {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.paywallLinks button {
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+}
+
+.paywallLinks span {
+  color: #d1d5db;
+  font-size: 12px;
 }

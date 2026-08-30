@@ -1,6 +1,6 @@
 {
   "appId": "com.keiten.hiroihashi",
-  "appName": "軽天拾い出し",
+  "appName": "軽天計算",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"

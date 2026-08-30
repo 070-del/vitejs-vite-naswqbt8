@@ -1,0 +1,70 @@
+{
+  "identifier" : "D1E2F304-0000-0000-0000-000000000010",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6788243219",
+    "_developerTeamID" : "Z4D4D67N6U",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "ja",
+    "_storefront" : "JPN",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "22263441",
+      "localizations" : [
+        {
+          "description" : "軽天計算プラン",
+          "displayName" : "軽天計算プラン",
+          "locale" : "ja"
+        }
+      ],
+      "name" : "軽天計算プラン",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "150",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6794589569",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "軽天計算の全機能を無制限でご利用いただける月額プランです",
+              "displayName" : "月額プラン",
+              "locale" : "ja"
+            }
+          ],
+          "productID" : "com.keiten.hiroihashi.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "月額プラン",
+          "subscriptionGroupID" : "22263441",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

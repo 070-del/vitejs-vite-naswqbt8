@@ -24,7 +24,15 @@ import {
   loadFromNativeStorage,
   removeFromNativeStorage,
   getAllNativeStorageKeys,
+  isNative,
 } from "./native.js";
+import {
+  checkSubscription,
+  getSubscriptionProduct,
+  purchaseSubscription,
+  restorePurchases,
+  addSubscriptionListener,
+} from "./subscription.js";
 
 // V43_CORE_SPLIT_STRADDLE_DIMENSION_LABELS
 // バー材も「線を作る → 線を描く → 線から本数結果を出す」に統一
@@ -72,12 +80,95 @@ export default function App() {
   const [savedRooms, setSavedRooms] = useState([]);
   const [selectedSavedRoom, setSelectedSavedRoom] = useState(null);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showTermsOfService, setShowTermsOfService] = useState(false);
   const [modal, setModal] = useState(null);
+
+  const [isSubscribed, setIsSubscribed] = useState(!isNative);
+  const [isCheckingSubscription, setIsCheckingSubscription] = useState(isNative);
+  const [subscriptionProduct, setSubscriptionProduct] = useState(null);
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [purchaseError, setPurchaseError] = useState(null);
 
   const canvasRef = useRef(null);
   const canvasReady = useRef(false);
   const drawing = useRef(false);
   const pointsRef = useRef([]);
+
+  useEffect(() => {
+    if (!isNative) return;
+    let cancelled = false;
+
+    (async () => {
+      const active = await checkSubscription();
+      if (cancelled) return;
+      setIsSubscribed(active);
+      setIsCheckingSubscription(false);
+
+      if (!active) {
+        const product = await getSubscriptionProduct();
+        if (!cancelled) setSubscriptionProduct(product);
+      }
+    })();
+
+    const listener = addSubscriptionListener(async () => {
+      const active = await checkSubscription();
+      if (!cancelled) setIsSubscribed(active);
+    });
+
+    return () => {
+      cancelled = true;
+      listener?.remove?.();
+    };
+  }, []);
+
+  const handlePurchase = async () => {
+    setIsPurchasing(true);
+    setPurchaseError(null);
+    try {
+      const result = await purchaseSubscription();
+      if (result.success) {
+        setIsSubscribed(true);
+        await successHaptic();
+      } else if (result.cancelled) {
+        // ユーザーがキャンセル — エラー表示不要
+      } else if (result.error) {
+        const msg = result.error.includes("Product not found")
+          ? "サブスクリプションの情報を取得できませんでした。App Storeにサインインしているか確認し、しばらくしてからお試しください。"
+          : result.error;
+        setPurchaseError(msg);
+        await warningHaptic();
+      } else {
+        setPurchaseError("購入を完了できませんでした。しばらくしてからもう一度お試しください。");
+        await warningHaptic();
+      }
+    } catch {
+      setPurchaseError("購入処理中にエラーが発生しました。ネットワーク接続を確認してください。");
+      await warningHaptic();
+    } finally {
+      setIsPurchasing(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setIsRestoring(true);
+    setPurchaseError(null);
+    try {
+      const restored = await restorePurchases();
+      if (restored) {
+        setIsSubscribed(true);
+        await successHaptic();
+      } else {
+        setPurchaseError("復元できるサブスクリプションが見つかりませんでした。");
+        await warningHaptic();
+      }
+    } catch {
+      setPurchaseError("復元処理中にエラーが発生しました。ネットワーク接続を確認してください。");
+      await warningHaptic();
+    } finally {
+      setIsRestoring(false);
+    }
+  };
 
   useEffect(() => {
     const preventHorizontalScroll = () => {
@@ -412,7 +503,7 @@ export default function App() {
   };
 
   const renameSavedRoom = async (key, currentName = "") => {
-    const nextName = await showPrompt("新しい部屋名を入力してください", currentName || "未入力");
+    const nextName = await showPrompt("新しい名前を入力してください", currentName || "未入力");
     if (nextName === null) return;
 
     const cleanName = nextName.trim() || "未入力";
@@ -462,14 +553,38 @@ export default function App() {
     await tapHaptic();
     const lines = results.map((item) => `${item.name}: ${item.value}`);
     const text = [
-      `【${projectName || "未入力"}】軽天拾い出し結果`,
+      `【${projectName || "未入力"}】軽天計算結果`,
       "",
       ...lines,
       "",
       `設定: バーピッチ ${settings.barPitch}(w${settings.barW})`,
     ].join("\n");
-    await shareResults("軽天拾い出し結果", text);
+    await shareResults("軽天計算結果", text);
   };
+
+  if (isCheckingSubscription) {
+    return (
+      <div className="app">
+        <div className="paywallLoading">
+          <div className="paywallSpinner" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isSubscribed) {
+    return (
+      <Paywall
+        product={subscriptionProduct}
+        isPurchasing={isPurchasing}
+        isRestoring={isRestoring}
+        errorMessage={purchaseError}
+        onPurchase={handlePurchase}
+        onRestore={handleRestore}
+        onDismissError={() => setPurchaseError(null)}
+      />
+    );
+  }
 
   return (
     <div className="app">
@@ -660,6 +775,13 @@ export default function App() {
             setShowSavedRooms(false);
             setShowPrivacyPolicy(true);
           }}
+          onShowTerms={() => {
+            setShowSavedRooms(false);
+            setShowTermsOfService(true);
+          }}
+          onManageSubscription={() => {
+            window.open("https://apps.apple.com/account/subscriptions", "_blank");
+          }}
         />
       )}
 
@@ -675,9 +797,173 @@ export default function App() {
         <PrivacyPolicyModal onClose={() => setShowPrivacyPolicy(false)} />
       )}
 
+      {showTermsOfService && (
+        <TermsOfServiceModal onClose={() => setShowTermsOfService(false)} />
+      )}
+
       {modal && (
         <NativeModal modal={modal} onClose={closeModal} />
       )}
+    </div>
+  );
+}
+
+function Paywall({ product, isPurchasing, isRestoring, errorMessage, onPurchase, onRestore, onDismissError }) {
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+
+  const priceText = product?.displayPrice || "¥150";
+
+  return (
+    <div className="app">
+      <div className="paywall">
+        <div className="paywallContent">
+          <div className="paywallIcon">📐</div>
+          <h1 className="paywallTitle">軽天材拾い出し</h1>
+          <p className="paywallSubtitle">軽天工事の天井材計算ツール</p>
+
+          <ul className="paywallFeatures">
+            <li>天井の形を手書き入力</li>
+            <li>部材数量も自動で拾い出し</li>
+            <li>選べるバーピッチ</li>
+            <li>拾い出し結果をテキストで共有</li>
+            <li>複数の現場データを保存管理</li>
+          </ul>
+
+          <div className="paywallPriceBox">
+            <span className="paywallPlanName">月額プラン</span>
+            <span className="paywallPrice">{priceText}</span>
+            <span className="paywallPeriod">/ 月</span>
+          </div>
+
+          <button
+            className="paywallSubscribeBtn"
+            onClick={onPurchase}
+            disabled={isPurchasing}
+          >
+            {isPurchasing ? "処理中..." : "サブスクリプションに登録"}
+          </button>
+
+          <button
+            className="paywallRestoreBtn"
+            onClick={onRestore}
+            disabled={isRestoring}
+          >
+            {isRestoring ? "復元中..." : "購入を復元"}
+          </button>
+
+          {errorMessage && (
+            <div className="paywallError" onClick={onDismissError}>
+              <p>{errorMessage}</p>
+            </div>
+          )}
+
+          <div className="paywallLegal">
+            <p>
+              サブスクリプションは月額{priceText}で自動更新されます。
+              購入の確認時にApple IDアカウントに請求されます。
+              現在の期間が終了する24時間前までに自動更新をオフにしない限り、
+              サブスクリプションは自動的に更新されます。
+              アカウントへの請求は、現在の期間の終了前24時間以内に行われます。
+              購入後、設定アプリからサブスクリプションを管理・解約できます。
+            </p>
+            <div className="paywallLinks">
+              <button onClick={() => setShowTerms(true)}>利用規約</button>
+              <span>|</span>
+              <button onClick={() => setShowPrivacy(true)}>プライバシーポリシー</button>
+            </div>
+          </div>
+        </div>
+
+        {showPrivacy && <PrivacyPolicyModal onClose={() => setShowPrivacy(false)} />}
+        {showTerms && <TermsOfServiceModal onClose={() => setShowTerms(false)} />}
+      </div>
+    </div>
+  );
+}
+
+function TermsOfServiceModal({ onClose }) {
+  return (
+    <div className="drawerOverlay">
+      <aside className="savedDrawer privacyDrawer">
+        <div className="drawerHeader">
+          <strong>利用規約</strong>
+          <button onClick={onClose} aria-label="閉じる">×</button>
+        </div>
+        <div className="privacyContent">
+          <h3>軽天材拾い出し 利用規約</h3>
+          <p>最終更新日：2026年8月14日</p>
+
+          <h4>1. サービスの概要</h4>
+          <p>
+            本アプリ「軽天材拾い出し」（以下「本アプリ」）は、軽量鉄骨天井（軽天）の
+            下地材拾い出し計算をサポートするツールです。
+            本利用規約（以下「本規約」）は、本アプリの利用に関する条件を定めるものです。
+            本アプリをご利用になった時点で、本規約に同意したものとみなします。
+          </p>
+
+          <h4>2. サブスクリプション</h4>
+          <p>
+            本アプリの全機能を利用するには、月額サブスクリプション（月額150円）への
+            登録が必要です。
+          </p>
+          <ul>
+            <li>サブスクリプションはApple IDアカウントを通じて管理されます。</li>
+            <li>購入の確認時にApple IDアカウントに請求されます。</li>
+            <li>サブスクリプションは1ヶ月ごとに自動更新されます。</li>
+          </ul>
+
+          <h4>3. 自動更新と解約</h4>
+          <p>
+            サブスクリプションは、現在の期間が終了する24時間前までに自動更新を
+            オフにしない限り、同じ期間・同じ料金で自動的に更新されます。
+            アカウントへの請求は、現在の期間の終了前24時間以内に行われます。
+          </p>
+          <p>
+            解約は、iOSの「設定」App → Apple ID → サブスクリプション から行うことが
+            できます。解約後も、支払い済みの期間中は引き続きサービスをご利用いただけます。
+          </p>
+
+          <h4>4. 返金</h4>
+          <p>
+            サブスクリプションの返金はApple Inc.のポリシーに従い処理されます。
+            返金を希望される場合は、Appleサポート（reportaproblem.apple.com）に
+            お問い合わせください。
+          </p>
+
+          <h4>5. 免責事項</h4>
+          <p>
+            本アプリが提供する計算結果は参考値です。実際の施工に際しては、
+            必ず専門家による確認を行ってください。
+            本アプリの計算結果に基づく損害について、開発者は一切の責任を負いません。
+          </p>
+
+          <h4>6. 知的財産権</h4>
+          <p>
+            本アプリに含まれるすべてのコンテンツ（デザイン、ロゴ、テキスト、
+            ソフトウェアなど）に関する知的財産権は、開発者に帰属します。
+          </p>
+
+          <h4>7. 禁止事項</h4>
+          <ul>
+            <li>本アプリの逆コンパイル、リバースエンジニアリング、逆アセンブル</li>
+            <li>本アプリの不正な複製、改変、再配布</li>
+            <li>本アプリを利用した違法行為</li>
+          </ul>
+
+          <h4>8. 規約の変更</h4>
+          <p>
+            本規約は予告なく変更される場合があります。
+            変更後も本アプリを継続して利用する場合、変更後の規約に同意したものとみなします。
+          </p>
+
+          <h4>9. 準拠法</h4>
+          <p>本規約は日本法に準拠し、日本法に従い解釈されます。</p>
+
+          <h4>10. お問い合わせ</h4>
+          <p>メール：070@i.softbank.jp</p>
+        </div>
+      </aside>
     </div>
   );
 }
@@ -691,14 +977,14 @@ function PrivacyPolicyModal({ onClose }) {
           <button onClick={onClose} aria-label="閉じる">×</button>
         </div>
         <div className="privacyContent">
-          <h3>軽天拾い出し プライバシーポリシー</h3>
-          <p>最終更新日：2026年7月18日</p>
+          <h3>軽天材拾い出し プライバシーポリシー</h3>
+          <p>最終更新日：2026年8月14日</p>
 
           <h4>1. 収集する情報</h4>
           <p>
-            本アプリは、ユーザーの個人情報を一切収集しません。
-            入力された寸法データや計算結果は、すべてお使いの端末内にのみ保存され、
-            外部サーバーへの送信は行いません。
+            本アプリ「軽天材拾い出し」（以下「本アプリ」）は、ユーザーの個人情報を
+            一切収集しません。入力された寸法データや計算結果は、すべてお使いの端末内に
+            のみ保存され、外部サーバーへの送信は行いません。
           </p>
 
           <h4>2. データの保存</h4>
@@ -707,31 +993,42 @@ function PrivacyPolicyModal({ onClose }) {
             すべてお使いの端末のローカルストレージに保存されます。
             これらのデータはアプリをアンインストールすると削除されます。
           </p>
+          <p>
+            保存した部屋データは、アプリ内の「保存データ」メニューからいつでも
+            個別に削除できます。
+          </p>
 
-          <h4>3. 第三者への提供</h4>
+          <h4>3. 購入情報</h4>
+          <p>
+            サブスクリプションの購入・管理に関するデータは、Apple Inc.により
+            処理されます。開発者がお客様の支払情報にアクセスすることはありません。
+            詳細はAppleのプライバシーポリシーをご確認ください。
+          </p>
+
+          <h4>4. 第三者への提供</h4>
           <p>
             本アプリはユーザーデータを第三者に提供、販売、共有することはありません。
           </p>
 
-          <h4>4. 分析・トラッキング</h4>
+          <h4>5. 分析・トラッキング</h4>
           <p>
             本アプリはアクセス解析ツールやトラッキングツールを使用しません。
             広告の表示も行いません。
           </p>
 
-          <h4>5. お子様のプライバシー</h4>
+          <h4>6. お子様のプライバシー</h4>
           <p>
             本アプリは13歳未満のお子様を対象としたものではありません。
             お子様から意図的に個人情報を収集することはありません。
           </p>
 
-          <h4>6. ポリシーの変更</h4>
+          <h4>7. ポリシーの変更</h4>
           <p>
             本プライバシーポリシーは予告なく変更される場合があります。
             変更はアプリの更新を通じて通知されます。
           </p>
 
-          <h4>7. お問い合わせ</h4>
+          <h4>8. お問い合わせ</h4>
           <p>
             本アプリに関するお問い合わせは、下記メールアドレスまでご連絡ください。
           </p>
@@ -796,7 +1093,7 @@ function Header({ title, onMenuClick }) {
     <header className="header" role="banner">
       <div className="spacer" />
       <h1>{title}</h1>
-      <button className="menu" onClick={onMenuClick} aria-label="保存した部屋を開く">☰</button>
+      <button className="menu" onClick={onMenuClick} aria-label="保存データを開く">☰</button>
     </header>
   );
 }
@@ -922,12 +1219,12 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false }) {
   );
 }
 
-function SavedRoomsPanel({ rooms, onClose, onDelete, onRename, onOpen, onShowPrivacy }) {
+function SavedRoomsPanel({ rooms, onClose, onDelete, onRename, onOpen, onShowPrivacy, onShowTerms, onManageSubscription }) {
   return (
     <div className="drawerOverlay">
       <aside className="savedDrawer">
         <div className="drawerHeader">
-          <strong>保存した部屋</strong>
+          <strong>保存データ</strong>
           <button onClick={onClose} aria-label="閉じる">×</button>
         </div>
 
@@ -958,10 +1255,16 @@ function SavedRoomsPanel({ rooms, onClose, onDelete, onRename, onOpen, onShowPri
         </div>
 
         <div className="drawerFooter">
+          <button className="privacyLink" onClick={onManageSubscription}>
+            サブスクリプション管理
+          </button>
+          <button className="privacyLink" onClick={onShowTerms}>
+            利用規約
+          </button>
           <button className="privacyLink" onClick={onShowPrivacy}>
             プライバシーポリシー
           </button>
-          <small className="appVersion">v1.0.0</small>
+          <small className="appVersion">v1.0.16</small>
         </div>
       </aside>
     </div>
