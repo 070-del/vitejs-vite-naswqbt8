@@ -11,10 +11,6 @@ class BridgeViewController: CAPBridgeViewController {
         return .darkContent
     }
 
-    override open func capacitorDidLoad() {
-        bridge?.registerPluginInstance(InAppPurchasePlugin())
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
         view.insetsLayoutMarginsFromSafeArea = false
