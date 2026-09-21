@@ -23,6 +23,8 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  // 開発中は古いソースや確認用ビルドをオフラインキャッシュから返さない。
+  if (["localhost", "127.0.0.1", "[::1]"].includes(self.location.hostname)) return;
   const request = event.request;
 
   if (request.method !== "GET") return;

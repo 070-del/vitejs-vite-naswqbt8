@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>軽天計算 — ボード表示確認</title>
+    <link rel="stylesheet" href="/dist/board-preview/app.css?t=rockzoom15030001" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator && ['localhost', '127.0.0.1'].includes(location.hostname)) {
+        navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+        navigator.serviceWorker.getRegistration('/').then((registration) => registration?.update());
+      }
+    </script>
+    <script type="module" src="/dist/board-preview/app.js?t=glue3kg01"></script>
+  </body>
+</html>

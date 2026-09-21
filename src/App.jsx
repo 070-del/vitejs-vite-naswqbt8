@@ -3,7 +3,7 @@
 // V51_227W455_EDGE_SINGLE_REMOVE_FRAMES
 // 303(w1820) と 227(w455) は変更しない。
 // 303(w910) の芯跨ぎだけ、中心±455mmをダブル基準にして303ピッチで配置する。
-// 303(w1820) と 364(w1820) は芯割り/芯跨ぎを使わず、左上基準の従来計算にする。
+// 基本303(w1820)と364の下地・ボードは左上基準。364の岩綿だけ芯基準。
 // V47_EDGE_TO_SECOND_W_CORE_SPLIT_180_FORMULA
 // 芯割り: 端部→2本目W = 端部から最初の内側Wまで（例 4000/W455 = 180mm）
 // 芯跨ぎ: 端部→2本目W = 中心跨ぎW割付（例 4000/W455 = 407.5mm）
@@ -13,7 +13,7 @@
 // 端部バーは全設定で必ずダブルバー。
 // 結果ページ右側の寸法表示と芯割り/芯跨ぎボタンは上下に分けて固定表示する。
 // V24_CHANNEL_UNIFIED_SINGLE_SOURCE
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import "./App.css";
 import {
   tapHaptic,
@@ -51,6 +51,30 @@ const barPitchOptions = [
   { pitch: 364, w: 1820, name: "岩綿" },
 ];
 
+const boardSize = { key: "910x1820", width: 910, height: 1820, name: "910×1820mm", sheetsPerTsubo: 2 };
+const smallGypsumBoardSize = { key: "455x910", width: 455, height: 910, name: "455×910mm", sheetsPerTsubo: 8 };
+const squareGypsumBoardSize = { key: "910x910", width: 910, height: 910, name: "910×910mm", sheetsPerTsubo: 4 };
+const rockWoolBoardSize = { key: "300x600", width: 300, height: 600, name: "300×600mm", sheetsPerTsubo: 18 };
+
+function isRockWoolSetting(settings = {}) {
+  return Number(settings.barPitch) === 364;
+}
+
+function getResultDiagramPages(settings = {}) {
+  return isRockWoolSetting(settings) ? ["下地", "ボード", "岩綿"] : ["下地", "ボード"];
+}
+
+const userProfileStorageKey = "ceiling-user-profile";
+
+function isUserProfileComplete(profile) {
+  return Boolean(
+    profile?.name?.trim() &&
+      profile?.company?.trim() &&
+      profile?.phone?.trim() &&
+      profile?.email?.trim()
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState(1);
   const [projectName, setProjectName] = useState("");
@@ -62,15 +86,34 @@ export default function App() {
     barW: 1820,
     barType: "基本",
     bisPitch: 303,
-    boardPer: 1,
+    boardSizeKey: "910x1820",
     finish: "岩綿",
     glassWool: "無し",
     // 芯割=中心をダブル、芯股ぎ=中心をシングル。基本は芯割。
     centerBarType: "double",
+    verticalCenterBarType: "double",
+    squareBoardPattern: "straight",
+    screwSpec: "general",
   });
   const [showSavedRooms, setShowSavedRooms] = useState(false);
   const [savedRooms, setSavedRooms] = useState([]);
   const [selectedSavedRoom, setSelectedSavedRoom] = useState(null);
+  const [showUserProfile, setShowUserProfile] = useState(false);
+  const [userProfileLoaded, setUserProfileLoaded] = useState(false);
+  const [userProfile, setUserProfile] = useState({
+    name: "",
+    company: "",
+    phone: "",
+    email: "",
+  });
+  const [showQuestionModal, setShowQuestionModal] = useState(false);
+  const [resultDiagramPage, setResultDiagramPage] = useState(0);
+  const resultDiagramPages = getResultDiagramPages(settings);
+  const activeDiagramPage = Math.min(resultDiagramPage, resultDiagramPages.length - 1);
+  const showBoardLayout = activeDiagramPage > 0;
+  const boardLayer = activeDiagramPage === 2 ? "rockWool" : "board";
+  const showCenterControls = usesCenteredBoardLayout(settings, boardLayer);
+  const nextResultDiagram = () => setResultDiagramPage((activeDiagramPage + 1) % resultDiagramPages.length);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
   const [modal, setModal] = useState(null);
@@ -113,6 +156,43 @@ export default function App() {
       document.removeEventListener("touchmove", preventHorizontalTouch);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUserProfile = async () => {
+      try {
+        const raw = await loadFromNativeStorage(userProfileStorageKey);
+        if (!raw || cancelled) return;
+        const profile = JSON.parse(raw);
+        setUserProfile({
+          name: profile?.name || "",
+          company: profile?.company || "",
+          phone: profile?.phone || "",
+          email: profile?.email || "",
+        });
+      } catch (e) {
+        console.warn("Failed to load user profile:", e);
+      } finally {
+        if (!cancelled) {
+          setUserProfileLoaded(true);
+        }
+      }
+    };
+
+    loadUserProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!userProfileLoaded) return;
+    if (!isUserProfileComplete(userProfile)) {
+      setShowUserProfile(true);
+    }
+  }, [userProfileLoaded, userProfile]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -459,6 +539,33 @@ export default function App() {
     }
   };
 
+  const saveUserProfile = async (profile) => {
+    const cleanProfile = {
+      name: profile.name?.trim() || "",
+      company: profile.company?.trim() || "",
+      phone: profile.phone?.trim() || "",
+      email: profile.email?.trim() || "",
+    };
+
+    if (!isUserProfileComplete(cleanProfile)) {
+      await warningHaptic();
+      await showAlert("ユーザー情報はすべて必須です。氏名、会社名、電話番号、メールアドレスを入力してください。");
+      return false;
+    }
+
+    try {
+      await saveToNativeStorage(userProfileStorageKey, JSON.stringify(cleanProfile));
+      setUserProfile(cleanProfile);
+      await successHaptic();
+      await showAlert("ユーザー情報を保存しました");
+      return true;
+    } catch (e) {
+      console.error("User profile save failed:", e);
+      await showAlert("ユーザー情報の保存に失敗しました");
+      return false;
+    }
+  };
+
   const handleShareResults = async () => {
     await tapHaptic();
     const lines = results.map((item) => `${item.name}: ${item.value}`);
@@ -470,6 +577,50 @@ export default function App() {
       `設定: バーピッチ ${settings.barPitch}(w${settings.barW})`,
     ].join("\n");
     await shareResults("軽天計算結果", text);
+  };
+
+  const openKeitenQuestion = async () => {
+    await tapHaptic();
+    if (!isUserProfileComplete(userProfile)) {
+      setShowUserProfile(true);
+      return;
+    }
+    setShowQuestionModal(true);
+  };
+
+  const submitKeitenQuestion = async (question) => {
+    const cleanQuestion = question.trim();
+
+    if (!cleanQuestion) {
+      await warningHaptic();
+      await showAlert("質問内容を入力してください");
+      return false;
+    }
+
+    const resultLines = results.length
+      ? results.map((item) => `${item.name}: ${item.value}`)
+      : ["計算結果なし"];
+
+    const text = [
+      "【軽天について質問】",
+      "",
+      "■ ユーザー情報",
+      `氏名: ${userProfile.name}`,
+      `会社名: ${userProfile.company}`,
+      `電話番号: ${userProfile.phone}`,
+      `メール: ${userProfile.email}`,
+      "",
+      "■ 質問内容",
+      cleanQuestion,
+      "",
+      "■ 現在の計算結果",
+      ...resultLines,
+      "",
+      `設定: バーピッチ ${settings.barPitch}(w${settings.barW}) / ボード ${getBoardSizeOption(settings).name}`,
+    ].join("\n");
+
+    await shareResults("軽天について質問", text);
+    return true;
   };
 
   return (
@@ -508,6 +659,10 @@ export default function App() {
           <section className="settingCard">
             <BarPitchSelector settings={settings} setSettings={setSettings} />
           </section>
+
+          <button className="questionWideBtn" onClick={openKeitenQuestion}>
+            軽天について質問する
+          </button>
         </main>
       )}
 
@@ -544,76 +699,155 @@ export default function App() {
       {page === 3 && (
         <main className="page resultPage">
           <div
-            className="resultShapeControlRow"
+            className={
+              showBoardLayout
+                ? "resultShapeControlRow boardLayoutActive"
+                : "resultShapeControlRow"
+            }
+            role="button"
+            tabIndex={0}
+            aria-label={isRockWoolSetting(settings) ? "図形をタップして下地・ボード・岩綿を切り替える" : "図形をタップしてボード割付表示を切り替える"}
+            onClick={nextResultDiagram}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                nextResultDiagram();
+              }
+            }}
             style={{
               position: "relative",
               display: "flex",
+              flexWrap: "wrap",
+              gap: 16,
               alignItems: "center",
               justifyContent: "center",
               width: "100%",
               maxWidth: "100%",
-              minHeight: !isLeftTopBarSetting(settings) ? 315 : undefined,
+              minHeight: showCenterControls ? 315 : undefined,
               marginBottom: 12,
-              overflow: "hidden",
+              overflow: "visible",
             }}
           >
+            <ZoomableDiagram key={`${activeDiagramPage}-${shape.type}`}>
             <CleanShape
               shape={shape}
               small
               dims={dims}
               settings={settings}
               showValues
-              showBoltDots
-              showChannelLines
-              showBarLines
+              showBoltDots={!showBoardLayout}
+              showChannelLines={!showBoardLayout}
+              showBarLines={!showBoardLayout}
+              showBoardLayout={showBoardLayout}
+              boardLayer={boardLayer}
               showBarDimensionLabels={false}
             />
+            </ZoomableDiagram>
 
-            {!isLeftTopBarSetting(settings) && (
+            {showCenterControls && (
               <div
                 className="resultSideControls"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
                 style={{
-                  position: "absolute",
-                  left: "calc(50% + 205px)",
-                  top: "50%",
-                  transform: "translateY(-50%)",
+                  position: "relative",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "flex-start",
-                  gap: 16,
-                  minWidth: 190,
-                  maxWidth: 230,
+                  gap: 7,
+                  flex: "0 0 205px",
+                  maxWidth: "100%",
                   zIndex: 3,
                 }}
               >
+                <CenterBarTypeToggle settings={settings} setSettings={setSettings} compact direction="horizontal" />
                 <div
                   className="barDimensionTextList"
                   style={{
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "flex-start",
-                    gap: 12,
-                    fontSize: 12.5,
+                    gap: 5,
+                    fontSize: 10,
                     fontWeight: 900,
                     color: "#334155",
-                    lineHeight: 1.45,
-                    whiteSpace: "nowrap",
+                    lineHeight: 1.3,
+                    whiteSpace: "normal",
+                    wordBreak: "keep-all",
                   }}
                 >
-                  {getResultBarDimensionTexts(dims, shape, settings).map((text) => (
+                  {getResultBarDimensionTexts(dims, shape, settings, boardLayer).map((text) => (
                     <div key={text}>{text}</div>
                   ))}
                 </div>
-                <CenterBarTypeToggle settings={settings} setSettings={setSettings} compact />
+                <CenterBarTypeToggle settings={settings} setSettings={setSettings} compact direction="vertical" />
+                <div
+                  className="barDimensionTextList"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 5,
+                    fontSize: 10,
+                    fontWeight: 900,
+                    color: "#334155",
+                    lineHeight: 1.3,
+                    whiteSpace: "normal",
+                    wordBreak: "keep-all",
+                  }}
+                >
+                  {getVerticalResultBarDimensionTexts(dims, shape, settings, boardLayer).map((text) => (
+                    <div key={text}>{text}</div>
+                  ))}
+                </div>
+                {getBoardSizeOption(settings).key === "910x910" && (
+                  <div className="boardPatternToggle" role="group" aria-label="3×3ジプトーンの貼り方">
+                    {[["straight", "芋貼り"], ["brick", "レンガ貼り"]].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={(settings.squareBoardPattern || "straight") === value}
+                        onClick={() => setSettings((prev) => ({ ...prev, squareBoardPattern: value }))}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           <section className="resultCard">
             {results.map((item) => (
-              <div className="resultRow" key={item.name}>
+              <div
+                className={[
+                  "resultRow",
+                  item.category === "board" ? "boardSectionRow" : "",
+                  item.name === "ビス" ? "screwResultRow" : "",
+                ].filter(Boolean).join(" ")}
+                key={item.name}
+              >
                 <strong>{item.name}</strong>
                 <span className="resultValue">
+                  {item.name === "ビス" && isGyptoneSetting(settings) && (
+                    <span className="screwSpecToggle" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className={(settings.screwSpec || "general") === "general" ? "active" : ""}
+                        onClick={() => setSettings({ ...settings, screwSpec: "general" })}
+                      >
+                        一般
+                      </button>
+                      <button
+                        type="button"
+                        className={settings.screwSpec === "public" ? "active" : ""}
+                        onClick={() => setSettings({ ...settings, screwSpec: "public" })}
+                      >
+                        公共
+                      </button>
+                    </span>
+                  )}
                   {splitResultValue(item.value).map((part, index) => (
                     <span className="resultPart" key={`${item.name}-${index}`}>
                       {part}
@@ -637,6 +871,9 @@ export default function App() {
             <button className="shareBtn" onClick={handleShareResults}>
               📤 結果を共有
             </button>
+            <button className="questionWideBtn compactQuestionBtn" onClick={openKeitenQuestion}>
+              軽天について質問する
+            </button>
           </section>
 
           <div className="pageNavButtons">
@@ -657,6 +894,10 @@ export default function App() {
           onDelete={deleteSavedRoom}
           onRename={renameSavedRoom}
           onOpen={(room) => setSelectedSavedRoom(room)}
+          onShowUserProfile={() => {
+            setShowSavedRooms(false);
+            setShowUserProfile(true);
+          }}
           onShowPrivacy={() => {
             setShowSavedRooms(false);
             setShowPrivacyPolicy(true);
@@ -665,6 +906,22 @@ export default function App() {
             setShowSavedRooms(false);
             setShowTermsOfService(true);
           }}
+        />
+      )}
+
+      {showUserProfile && (
+        <UserProfileModal
+          profile={userProfile}
+          required={!isUserProfileComplete(userProfile)}
+          onClose={() => setShowUserProfile(false)}
+          onSave={saveUserProfile}
+        />
+      )}
+
+      {showQuestionModal && (
+        <KeitenQuestionModal
+          onClose={() => setShowQuestionModal(false)}
+          onSubmit={submitKeitenQuestion}
         />
       )}
 
@@ -766,13 +1023,14 @@ function PrivacyPolicyModal({ onClose }) {
           <h4>1. 収集する情報</h4>
           <p>
             本アプリ「軽天材拾い出し」（以下「本アプリ」）は、ユーザーの個人情報を
-            一切収集しません。入力された寸法データや計算結果は、すべてお使いの端末内に
-            のみ保存され、外部サーバーへの送信は行いません。
+            外部サーバーへ送信しません。入力された寸法データ、計算結果、保存データ、
+            ユーザー情報（氏名、会社名、電話番号、メールアドレス）は、すべてお使いの端末内に
+            のみ保存されます。
           </p>
 
           <h4>2. データの保存</h4>
           <p>
-            本アプリで保存されるデータ（部屋の寸法、計算結果、プロジェクト名など）は、
+            本アプリで保存されるデータ（部屋の寸法、計算結果、プロジェクト名、ユーザー情報など）は、
             すべてお使いの端末のローカルストレージに保存されます。
             これらのデータはアプリをアンインストールすると削除されます。
           </p>
@@ -784,6 +1042,8 @@ function PrivacyPolicyModal({ onClose }) {
           <h4>3. 第三者への提供</h4>
           <p>
             本アプリはユーザーデータを第三者に提供、販売、共有することはありません。
+            ただし、「軽天について質問する」機能でユーザーが共有先を選択した場合、
+            質問内容、ユーザー情報、計算結果がその共有先に送信されます。
           </p>
 
           <h4>4. 分析・トラッキング</h4>
@@ -889,9 +1149,9 @@ function BarPitchSelector({ settings, setSettings }) {
       barW: option.w,
       barType: option.name,
       bisPitch: option.pitch,
-      // 303(w1820) と 364(w1820) は芯割り/芯跨ぎを使わないので、
+      // 基本303(w1820)は芯割り/芯跨ぎを使わないので、
       // 内部状態は基本の芯割りへ戻しておく。
-      centerBarType: leftTopBased ? "double" : settings.centerBarType || "double",
+      centerBarType: leftTopBased && option.pitch !== 364 ? "double" : settings.centerBarType || "double",
     });
     setOpen(false);
   };
@@ -928,24 +1188,59 @@ function BarPitchSelector({ settings, setSettings }) {
   );
 }
 
-function getResultBarDimensionTexts(dims, shape, settings) {
-  if (isLeftTopBarSetting(settings)) return [];
+function getResultBarDimensionTexts(dims, shape, settings, layer = "board") {
+  if (!usesCenteredBoardLayout(settings, layer)) return [];
 
   const polygonPoints = buildPolygonFromDims(dims, shape);
   if (!polygonPoints) return [];
 
   const plan = makeBarPlan(polygonPoints, settings);
-  return (plan.dimensionLabels || []).map((label) => label.text);
+  if (isRockWoolSetting(settings) && layer === "rockWool") {
+    const box = getBox(polygonPoints);
+    const verticalBars = plan.barAxis === "V";
+    const min = verticalBars ? box.minX : box.minY;
+    const max = verticalBars ? box.maxX : box.maxY;
+    const layout = makeBoardLayout(polygonPoints, plan.barAxis, settings, layer);
+    const endSizes = [...new Set(layout.tiles.filter(({ usedRect }) =>
+      Math.abs((verticalBars ? usedRect.x + usedRect.width : usedRect.y + usedRect.height) - max) < 0.01
+    ).map((tile) => formatMmLabel(verticalBars ? tile.usedWidth : tile.usedHeight)))].sort((a,b) => Number(b) - Number(a));
+    return [
+      `横端部→中心 ${formatMmLabel((max - min) / 2 - (settings.centerBarType === "single" ? 150 : 0))}mm`,
+      `横端部→2本目W ${endSizes.map(size => `${size}mm`).join(" / ")}`,
+    ];
+  }
+  return (plan.dimensionLabels || []).map((label) => label.text.replace(/^端部/, "横端部"));
 }
 
-function CenterBarTypeToggle({ settings, setSettings, compact = false }) {
-  const isMatagi = settings.centerBarType === "single";
+function getVerticalResultBarDimensionTexts(dims, shape, settings, layer = "board") {
+  if (!usesCenteredBoardLayout(settings, layer)) return [];
+  const points = buildPolygonFromDims(dims, shape);
+  if (!points) return [];
+  const box = getBox(points);
+  const gLength = Number(dims.G) || box.maxX - box.minX;
+  const plan = makeBarPlan(points, settings);
+  const layout = makeBoardLayout(points, plan.barAxis, settings, layer);
+  const vertical = plan.barAxis === "V";
+  const end = vertical ? box.maxY : box.maxX;
+  const endSizes = [...new Set(layout.tiles.filter((tile) => {
+    const used = tile.usedRect;
+    return Math.abs((vertical ? used.y + used.height : used.x + used.width) - end) < 0.01;
+  }).map((tile) => formatMmLabel(vertical ? tile.usedHeight : tile.usedWidth)))];
+  // 岩綿は端部に並ぶ段の順を保ち、レンガ貼りの端材寸法を図形と対応させる。
+  if (layer !== "rockWool") endSizes.sort((a, b) => Number(b) - Number(a));
+  return [
+    `縦端部→中心 ${formatMmLabel(gLength / 2 - (layer === "rockWool" && isRockWoolSetting(settings) && settings.verticalCenterBarType === "single" ? 150 : 0))}mm`,
+    `縦端部→2本目W ${endSizes.map((size) => `${size}mm`).join(" / ")}`,
+  ];
+}
+
+function CenterBarTypeToggle({ settings, setSettings, compact = false, direction = "horizontal" }) {
+  const settingKey = direction === "vertical" ? "verticalCenterBarType" : "centerBarType";
+  const directionLabel = direction === "vertical" ? "縦" : "横";
+  const isMatagi = settings[settingKey] === "single";
 
   const select = (type) => {
-    setSettings({
-      ...settings,
-      centerBarType: type,
-    });
+    setSettings((prev) => ({ ...prev, [settingKey]: type }));
   };
 
   const buttonStyle = (active) => ({
@@ -965,6 +1260,8 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false }) {
   return (
     <section
       className={compact ? "" : "settingCard"}
+      role="group"
+      aria-label={`${directionLabel}方向の芯割り・芯跨ぎ`}
       style={{
         marginTop: compact ? 0 : 8,
         marginBottom: compact ? 0 : 8,
@@ -976,8 +1273,10 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false }) {
       }}
     >
       <div style={{ display: "flex", gap: compact ? 6 : 8, alignItems: "center" }}>
+        <span style={{ fontSize: compact ? 11 : 13, fontWeight: 900 }}>{directionLabel}</span>
         <button
           type="button"
+          aria-pressed={!isMatagi}
           style={buttonStyle(!isMatagi)}
           onClick={() => select("double")}
         >
@@ -985,6 +1284,7 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false }) {
         </button>
         <button
           type="button"
+          aria-pressed={isMatagi}
           style={buttonStyle(isMatagi)}
           onClick={() => select("single")}
         >
@@ -995,13 +1295,26 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false }) {
   );
 }
 
-function SavedRoomsPanel({ rooms, onClose, onDelete, onRename, onOpen, onShowPrivacy, onShowTerms }) {
+function SavedRoomsPanel({
+  rooms,
+  onClose,
+  onDelete,
+  onRename,
+  onOpen,
+  onShowUserProfile,
+  onShowPrivacy,
+  onShowTerms,
+}) {
   return (
     <div className="drawerOverlay">
       <aside className="savedDrawer">
         <div className="drawerHeader">
           <strong>保存データ</strong>
           <button onClick={onClose} aria-label="閉じる">×</button>
+        </div>
+
+        <div className="drawerMenuActions">
+          <button onClick={onShowUserProfile}>ユーザー情報を登録</button>
         </div>
 
         {!rooms.length && <p className="emptySaved">保存データはまだありません。</p>}
@@ -1037,7 +1350,125 @@ function SavedRoomsPanel({ rooms, onClose, onDelete, onRename, onOpen, onShowPri
           <button className="privacyLink" onClick={onShowPrivacy}>
             プライバシーポリシー
           </button>
-          <small className="appVersion">v1.2.0</small>
+          <small className="appVersion">v1.3.0</small>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function UserProfileModal({ profile, required = false, onClose, onSave }) {
+  const [draft, setDraft] = useState(profile);
+
+  useEffect(() => {
+    setDraft(profile);
+  }, [profile]);
+
+  const change = (key, value) => {
+    setDraft((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const save = async () => {
+    const saved = await onSave(draft);
+    if (saved) onClose();
+  };
+
+  return (
+    <div className="drawerOverlay">
+      <aside className="savedDrawer profileDrawer">
+        <div className="drawerHeader">
+          <strong>ユーザー情報</strong>
+          {!required && <button onClick={onClose} aria-label="閉じる">×</button>}
+        </div>
+
+        <div className="profileForm">
+          {required && (
+            <p className="requiredProfileMessage">
+              このアプリを利用するには、ユーザー情報の登録が必要です。すべての項目を入力してください。
+            </p>
+          )}
+          <label>
+            <span>氏名（必須）</span>
+            <input
+              value={draft.name}
+              onChange={(e) => change("name", e.target.value)}
+              placeholder="例：山田 太郎"
+            />
+          </label>
+          <label>
+            <span>会社名（必須）</span>
+            <input
+              value={draft.company}
+              onChange={(e) => change("company", e.target.value)}
+              placeholder="例：山田内装"
+            />
+          </label>
+          <label>
+            <span>電話番号（必須）</span>
+            <input
+              inputMode="tel"
+              value={draft.phone}
+              onChange={(e) => change("phone", e.target.value)}
+              placeholder="例：090-0000-0000"
+            />
+          </label>
+          <label>
+            <span>メールアドレス（必須）</span>
+            <input
+              inputMode="email"
+              value={draft.email}
+              onChange={(e) => change("email", e.target.value)}
+              placeholder="例：name@example.com"
+            />
+          </label>
+          <p>
+            入力した情報はこの端末内に保存されます。「軽天について質問する」を利用する場合のみ、
+            ユーザーが選択した共有先へ質問内容と一緒に送信されます。
+          </p>
+          <button className="saveBtn" onClick={save}>
+            保存
+          </button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function KeitenQuestionModal({ onClose, onSubmit }) {
+  const [question, setQuestion] = useState("");
+
+  const submit = async () => {
+    const submitted = await onSubmit(question);
+    if (submitted) onClose();
+  };
+
+  return (
+    <div className="drawerOverlay">
+      <aside className="savedDrawer profileDrawer questionDrawer">
+        <div className="drawerHeader">
+          <strong>軽天について質問</strong>
+          <button onClick={onClose} aria-label="閉じる">×</button>
+        </div>
+
+        <div className="questionForm">
+          <p>
+            軽天の納まり、材料、計算内容などを入力してください。送信時にユーザー情報と現在の計算結果を添付できます。
+          </p>
+          <label>
+            <span>質問内容</span>
+            <textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="例：この天井寸法の場合、ボードの割付とバーの入れ方はこれで合っていますか？"
+              rows={8}
+            />
+          </label>
+          <button className="questionWideBtn" onClick={submit}>
+            質問を共有する
+          </button>
         </div>
       </aside>
     </div>
@@ -1074,7 +1505,10 @@ function SavedRoomDetail({ room, onClose, onRename }) {
 
         <section className="resultCard detailResultCard">
           {roomResults.map((item) => (
-            <div className="resultRow" key={`detail-${item.name}`}>
+            <div
+              className={item.category === "board" ? "resultRow boardSectionRow" : "resultRow"}
+              key={`detail-${item.name}`}
+            >
               <strong>{item.name}</strong>
               <span className="resultValue">
                 {splitResultValue(item.value).map((part, index) => (
@@ -1104,6 +1538,95 @@ function splitResultValue(value) {
     .filter(Boolean);
 }
 
+function constrainDiagramView(view, width, height) {
+  const scale = Math.max(1, Math.min(4, view.scale));
+  const limitX = width * (scale - 1) / 2;
+  const limitY = height * (scale - 1) / 2;
+  return { scale, x: Math.max(-limitX, Math.min(limitX, view.x)), y: Math.max(-limitY, Math.min(limitY, view.y)) };
+}
+
+function getDiagramGestureView(base, start, current, width, height) {
+  const center = (points) => ({ x: points.reduce((n,p) => n+p.x,0)/points.length, y: points.reduce((n,p) => n+p.y,0)/points.length });
+  const from = center(start);
+  const to = center(current);
+  const distance = (points) => Math.hypot(points[1].x-points[0].x, points[1].y-points[0].y);
+  const ratio = start.length === 2 ? distance(current) / Math.max(1, distance(start)) : 1;
+  const scale = Math.max(1, Math.min(4, base.scale * ratio));
+  const factor = scale / base.scale;
+  return constrainDiagramView({
+    scale,
+    x: to.x - width/2 - (from.x - width/2 - base.x)*factor,
+    y: to.y - height/2 - (from.y - height/2 - base.y)*factor,
+  }, width, height);
+}
+
+function ZoomableDiagram({ children }) {
+  const initial = { scale: 1, x: 0, y: 0 };
+  const [view, setView] = useState(initial);
+  const viewRef = useRef(initial);
+  const viewport = useRef(null);
+  const pointers = useRef(new Map());
+  const gesture = useRef(null);
+  const didDrag = useRef(false);
+  const suppressClickUntil = useRef(0);
+  const update = (next) => { viewRef.current = next; setView(next); };
+  const rebase = () => {
+    gesture.current = { base: viewRef.current, points: [...pointers.current.values()].slice(0,2) };
+  };
+  const point = (e) => {
+    const rect = viewport.current.getBoundingClientRect();
+    return { x: e.clientX-rect.left, y: e.clientY-rect.top };
+  };
+  const finish = (e) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    if (didDrag.current || pointers.current.size > 1) suppressClickUntil.current = Date.now()+500;
+    pointers.current.delete(e.pointerId);
+    rebase();
+  };
+  const zoom = (scale) => {
+    const { width, height } = viewport.current.getBoundingClientRect();
+    update(constrainDiagramView({ ...viewRef.current, scale }, width, height));
+  };
+  return (
+    <div className="diagramZoomPanel">
+      <div className="diagramZoomViewport" ref={viewport} aria-label="図形：2本指で拡大・縮小、拡大後はドラッグで移動"
+        onPointerDown={(e) => {
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          if (!pointers.current.size) didDrag.current = false;
+          pointers.current.set(e.pointerId, point(e));
+          if (pointers.current.size > 1) { didDrag.current = true; suppressClickUntil.current = Date.now()+500; }
+          rebase();
+        }}
+        onPointerMove={(e) => {
+          if (!pointers.current.has(e.pointerId)) return;
+          pointers.current.set(e.pointerId, point(e));
+          const current = [...pointers.current.values()].slice(0,2);
+          const start = gesture.current;
+          if (!start || current.length !== start.points.length) return;
+          if (current.some((p,i) => Math.hypot(p.x-start.points[i].x,p.y-start.points[i].y)>5)) {
+            didDrag.current = true;
+            suppressClickUntil.current = Date.now()+500;
+          }
+          const { width, height } = viewport.current.getBoundingClientRect();
+          update(getDiagramGestureView(start.base,start.points,current,width,height));
+        }}
+        onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}
+        onClickCapture={(e) => {
+          if (Date.now() < suppressClickUntil.current) { e.stopPropagation(); e.preventDefault(); }
+        }}
+      >
+        <div className="diagramZoomContent" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>{children}</div>
+      </div>
+      <div className="diagramZoomTools" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <button type="button" aria-label="図形を縮小" disabled={view.scale <= 1} onClick={() => zoom(view.scale-0.5)}>−</button>
+        <button type="button" aria-label="図形の拡大をリセット" onClick={() => update(initial)}>{Math.round(view.scale*100)}%</button>
+        <button type="button" aria-label="図形を拡大" disabled={view.scale >= 4} onClick={() => zoom(view.scale+0.5)}>＋</button>
+      </div>
+    </div>
+  );
+}
+
 function CleanShape({
   shape,
   small,
@@ -1113,8 +1636,11 @@ function CleanShape({
   showBoltDots = false,
   showChannelLines = false,
   showBarLines = false,
+  showBoardLayout = false,
+  boardLayer = "board",
   showBarDimensionLabels = true,
 }) {
+  const boardClipId = `board-clip-${useId().replace(/:/g, "")}`;
   const realClosedPoints = showValues ? buildPolygonFromDims(dims, shape) : null;
   const basePoints = realClosedPoints
     ? realClosedPoints.slice(0, -1)
@@ -1149,6 +1675,38 @@ function CleanShape({
     ? makeBarPlan(realClosedPoints, settings)
     : { doubleLines: [], singleLines: [], dimensionLabels: [] };
 
+  const boardLayout = showBoardLayout && realClosedPoints
+    ? makeBoardLayout(realClosedPoints, barPlan.barAxis, settings, boardLayer)
+    : { tiles: [] };
+
+  const boardTiles = showBoardLayout && realClosedPoints
+    ? boardLayout.tiles.map((tile) => {
+        const a = layout.mapPoint({ x: tile.x, y: tile.y });
+        const b = layout.mapPoint({ x: tile.x + tile.width, y: tile.y + tile.height });
+        const usedA = layout.mapPoint({
+          x: tile.usedRect?.x ?? tile.x,
+          y: tile.usedRect?.y ?? tile.y,
+        });
+        const usedB = layout.mapPoint({
+          x: (tile.usedRect?.x ?? tile.x) + (tile.usedRect?.width ?? tile.width),
+          y: (tile.usedRect?.y ?? tile.y) + (tile.usedRect?.height ?? tile.height),
+        });
+        return {
+          ...tile,
+          x: a.x,
+          y: a.y,
+          width: b.x - a.x,
+          height: b.y - a.y,
+          usedRect: {
+            x: usedA.x,
+            y: usedA.y,
+            width: usedB.x - usedA.x,
+            height: usedB.y - usedA.y,
+          },
+        };
+      })
+    : [];
+
   const boltDots = showBoltDots ? unifiedPlan.boltDots : [];
   const viewBoltDots = boltDots.map(layout.mapPoint);
   const channelLines = showChannelLines
@@ -1179,6 +1737,37 @@ function CleanShape({
   return (
     <div className={`shapeWrap ${small ? "small" : "big"}`}>
       <svg viewBox="0 0 280 220" style={{ overflow: "visible" }}>
+        {showBoardLayout && (
+          <defs>
+            <clipPath id={boardClipId}>
+              <polygon points={pointsText} />
+            </clipPath>
+          </defs>
+        )}
+
+        {showBoardLayout && (
+          <g clipPath={`url(#${boardClipId})`}>
+            <polygon
+              points={pointsText}
+              fill="#ecfeff"
+              stroke="none"
+            />
+            {boardTiles.map((tile, index) => (
+              <rect
+                key={`board-tile-${index}`}
+                x={tile.x}
+                y={tile.y}
+                width={tile.width}
+                height={tile.height}
+                fill={tile.fromStock ? "#dcfce7" : index % 2 ? "#dbeafe" : "#fef3c7"}
+                stroke={tile.fromStock ? "#16a34a" : "#0f766e"}
+                strokeWidth={small ? 0.7 : 1.1}
+                opacity="0.82"
+              />
+            ))}
+          </g>
+        )}
+
         <polygon
           points={pointsText}
           fill="none"
@@ -1186,6 +1775,42 @@ function CleanShape({
           strokeWidth="5"
           strokeLinejoin="round"
         />
+
+        {showBoardLayout &&
+          boardTiles.map((tile, index) => {
+            const labelPoint = getBoardLabelPoint(tile, polygonForLabels);
+            if (!labelPoint) return null;
+            const labelX = labelPoint.x;
+            const labelY = labelPoint.y;
+            const labelFontSize = boardLayer === "rockWool"
+              ? Math.max(1.4, Math.min(
+                  small ? 7 : 8.5,
+                  tile.usedRect.width / (String(tile.boardNo).length * 0.65 + 0.5),
+                  tile.usedRect.height * 0.65
+                ))
+              : small ? 8.4 : 10.2;
+
+            return (
+              <g key={`board-label-${index}`}>
+                <text
+                  x={labelX}
+                  y={labelY}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  style={{
+                    fontSize: labelFontSize,
+                    fontWeight: 900,
+                    fill: "#0f172a",
+                    paintOrder: "stroke",
+                    stroke: "#fff",
+                    strokeWidth: boardLayer === "rockWool" ? labelFontSize * 0.18 : small ? 1.8 : 2.2,
+                  }}
+                >
+                  {tile.boardNo}
+                </text>
+              </g>
+            );
+          })}
 
         {singleBarLines.map((line, index) => (
           <line
@@ -2955,6 +3580,9 @@ function normalizeResultList(list) {
     }
     return "0";
   };
+  const boardItem = list.find((item) => item.category === "board" || item.name === "ボード");
+  const finishBoardItem = list.find((item) => item.category === "finishBoard");
+  const screwItem = list.find((item) => item.name === "ビス");
 
   const hangerValue = String(get("ハンガー")).replace(/本/g, "コ");
 
@@ -2967,6 +3595,18 @@ function normalizeResultList(list) {
     { name: "ハンガー", value: hangerValue },
     { name: "ダブルクリップ", value: get("ダブルクリップ", "Wクリップ") },
     { name: "シングルクリップ", value: get("シングルクリップ", "Sクリップ") },
+    { name: boardItem?.name || "ボード", value: boardItem?.value || get("ボード"), category: "board" },
+    ...(finishBoardItem ? [{ ...finishBoardItem }] : []),
+    {
+      name: "ビス",
+      value: screwItem?.value || get("ビス"),
+      category: "boardAccessory",
+      settings: screwItem?.settings || {},
+    },
+    ...["ピン", "しろのり"].flatMap((name) => {
+      const item = list.find((entry) => entry.name === name);
+      return item ? [{ ...item, category: "boardAccessory" }] : [];
+    }),
   ];
 }
 
@@ -2981,6 +3621,10 @@ function finalizeResultList(list) {
   const boltCount = extractFirstNumber(getValue("ボルト"));
   const doubleClipCount = countClipsFromBarText(getValue("ダブルバー"));
   const singleClipCount = countClipsFromBarText(getValue("シングルバー"));
+  const boardItem = normalized.find((item) => item.category === "board");
+  const boardCount = extractFirstNumber(boardItem?.value || "");
+  const finishBoardItem = normalized.find((item) => item.category === "finishBoard");
+  const finishBoardCount = extractFirstNumber(finishBoardItem?.value || "");
 
   return normalized.map((item) => {
     if (item.name === "ナット") {
@@ -2997,6 +3641,20 @@ function finalizeResultList(list) {
 
     if (item.name === "シングルクリップ") {
       return { ...item, value: `${singleClipCount} コ` };
+    }
+
+    if (item.name === "ビス") {
+      const screwCount = isGyptoneSetting(item.settings || {}) || isGyptoneBoardName(boardItem?.name)
+        ? boardCount * getGyptoneScrewsPerSheet(item.settings || {})
+        : boardCount * 8;
+      return { ...item, value: `${screwCount} 発` };
+    }
+
+    if (finishBoardItem && item.name === "ピン") {
+      return { ...item, value: `${finishBoardCount * 25} 発` };
+    }
+    if (finishBoardItem && item.name === "しろのり") {
+      return { ...item, value: formatGlueAmount(finishBoardCount * 30) };
     }
 
     return item;
@@ -3055,17 +3713,661 @@ function makeResults(dims, settings, shape) {
 
   const doubleBarValue = barPlan.doubleValue;
   const singleBarValue = barPlan.singleValue;
+  const board = getBoardSizeOption(settings);
+  const boardValue = polygonPoints
+    ? makeBoardResult(polygonPoints, settings, barPlan.barAxis)
+    : "寸法未入力";
 
   return finalizeResultList([
     { name: "ボルト", value: `${plan.boltCount} 本` },
     { name: "チャンネル", value: plan.channelValue },
     { name: "ダブルバー", value: doubleBarValue },
     { name: "シングルバー", value: singleBarValue },
+    { name: getBoardResultName(settings, board), value: boardValue, category: "board" },
+    ...(isRockWoolSetting(settings) ? [{
+      name: "岩綿",
+      value: polygonPoints ? makeBoardResult(polygonPoints, settings, barPlan.barAxis, "rockWool") : "寸法未入力",
+      category: "finishBoard",
+    }] : []),
+    { name: "ビス", value: "0 発", category: "boardAccessory", settings },
+    ...(isRockWoolSetting(settings) ? [
+      { name: "ピン", value: "0 発", category: "boardAccessory" },
+      { name: "しろのり", value: "0 g", category: "boardAccessory" },
+    ] : []),
     { name: "ナット", value: "0 コ" },
     { name: "ハンガー", value: "0 コ" },
     { name: "Wクリップ", value: "0 コ" },
     { name: "Sクリップ", value: "0 コ" },
   ]);
+}
+
+function getBoardSizeOption(settingsOrKey, layer = "board") {
+  if (layer === "rockWool" && isRockWoolSetting(settingsOrKey)) return rockWoolBoardSize;
+  if (isGyptoneSetting(settingsOrKey)) {
+    return smallGypsumBoardSize;
+  }
+  if (Number(settingsOrKey?.barPitch) === 303 && Number(settingsOrKey?.barW) === 910) {
+    return squareGypsumBoardSize;
+  }
+
+  return boardSize;
+}
+
+function isGyptoneSetting(settings = {}) {
+  return Boolean(
+    settings &&
+      typeof settings === "object" &&
+      Number(settings.barPitch) === 227 &&
+      Number(settings.barW) === 455
+  );
+}
+
+function isGyptoneBoardName(name) {
+  return String(name || "").includes("ジプトーン");
+}
+
+function getGyptoneScrewsPerSheet(settings = {}) {
+  return settings.screwSpec === "public" ? 19 : 14;
+}
+
+function getBoardResultName(settings = {}, board = getBoardSizeOption(settings)) {
+  if (isRockWoolSetting(settings)) return "ボード";
+  if (Number(settings.barPitch) === 227 && Number(settings.barW) === 455) {
+    return "1.5×3ジプトーン";
+  }
+
+  return settings.barType || board.name || "ボード";
+}
+
+function makeBoardResult(points, settings = {}, barAxis = "H", layer = "board") {
+  const board = getBoardSizeOption(settings, layer);
+  const areaMm2 = Math.abs(signedArea(closePolygon(points))) / 2;
+  if (!Number.isFinite(areaMm2) || areaMm2 <= 0) return "0 枚";
+
+  const layout = makeBoardLayout(points, barAxis, settings, layer);
+  const count = layout.newBoardCount || Math.ceil(areaMm2 / (board.width * board.height));
+
+  return `${count} 枚（${formatSheetBundle(count, board.sheetsPerTsubo)}）`;
+}
+
+function makeBoardLayout(points, barAxis = "H", settings = {}, layer = "board") {
+  const closed = closePolygon(points);
+  const box = getBox(closed);
+  const tiles = [];
+  const stock = [];
+  const board = getBoardSizeOption(settings, layer);
+  const tileSize = getBoardTileSizeForBarAxis(barAxis, board);
+  const gridStart = getBoardGridStart(box, barAxis, tileSize, closed, settings, layer);
+  const brickOffset = getBrickBoardOffset(barAxis, board, settings);
+  let nextBoardNo = 1;
+  let stockUseCount = 0;
+
+  const visitTile = (tile) => {
+    if (tile.width <= 0 || tile.height <= 0) return false;
+
+    const clipped = clipBoardTileToPolygon(tile, closed);
+    const insideArea = clipped.length ? Math.abs(signedArea([...clipped, clipped[0]])) / 2 : 0;
+    if (insideArea > 0.001) {
+
+      const fullTile =
+        Math.abs(tile.width - tileSize.width) <= 1 &&
+        Math.abs(tile.height - tileSize.height) <= 1 &&
+        Math.abs(insideArea - tile.width * tile.height) < 0.01;
+      const usedBox = getBox(clipped);
+      const usedRect = fullTile ? tile : {
+        x: usedBox.minX, y: usedBox.minY,
+        width: usedBox.maxX - usedBox.minX, height: usedBox.maxY - usedBox.minY,
+      };
+      const usedWidth = Math.min(tile.width, usedRect.width);
+      const usedHeight = Math.min(tile.height, usedRect.height);
+      tile.usedRect = usedRect;
+      tile.usedWidth = usedWidth;
+      tile.usedHeight = usedHeight;
+      tile.insideArea = insideArea;
+
+      const stockMatch = findStockPiece(stock, usedWidth, usedHeight);
+
+      if (stockMatch) {
+        const piece = stock.splice(stockMatch.index, 1)[0];
+        tile.boardNo = piece.boardNo;
+        tile.fromStock = true;
+        stockUseCount += 1;
+        addBoardOffcutsFromUsedRect(stock, piece, {
+          x: 0,
+          y: 0,
+          width: usedWidth,
+          height: usedHeight,
+        });
+      } else {
+        tile.boardNo = nextBoardNo++;
+        tile.fromStock = false;
+        addBoardOffcutsFromUsedRect(
+          stock,
+          {
+            width: tileSize.width,
+            height: tileSize.height,
+            boardNo: tile.boardNo,
+          },
+          normalizeUsedRectForSource(tile, usedRect, tileSize)
+        );
+      }
+
+      tiles.push(tile);
+    }
+
+    return false;
+  };
+
+  if (barAxis === "V") {
+    for (
+      let crossIndex = 0, baseX = gridStart.x;
+      baseX < box.maxX - 0.001;
+      crossIndex += 1, baseX += tileSize.width
+    ) {
+      const startY =
+        gridStart.y + (brickOffset.axis === "y" && crossIndex % 2 === 1 ? brickOffset.amount - tileSize.height : 0);
+
+      for (let y = startY; y < box.maxY - 0.001; y += tileSize.height) {
+        const tile = {
+          x: baseX,
+          y,
+          width: Math.min(tileSize.width, box.maxX - baseX),
+          height: Math.min(tileSize.height, box.maxY - y),
+        };
+
+        if (visitTile(tile)) break;
+      }
+    }
+  } else {
+    for (
+      let crossIndex = 0, baseY = gridStart.y;
+      baseY < box.maxY - 0.001;
+      crossIndex += 1, baseY += tileSize.height
+    ) {
+      const startX =
+        gridStart.x + (brickOffset.axis === "x" && crossIndex % 2 === 1 ? brickOffset.amount - tileSize.width : 0);
+
+      for (let x = startX; x < box.maxX - 0.001; x += tileSize.width) {
+        const tile = {
+          x,
+          y: baseY,
+          width: Math.min(tileSize.width, box.maxX - x),
+          height: Math.min(tileSize.height, box.maxY - baseY),
+        };
+
+        if (visitTile(tile)) break;
+      }
+    }
+  }
+
+  return {
+    tiles,
+    newBoardCount: nextBoardNo - 1,
+    stockUseCount,
+    stock,
+  };
+}
+
+// 矩形で切り取った実面積を使う。小さな端部もサンプリングで落とさない。
+function clipBoardTileToPolygon(tile, polygon) {
+  let result = polygon.slice(0, -1);
+  const boundaries = [
+    ["x", tile.x, 1], ["x", tile.x + tile.width, -1],
+    ["y", tile.y, 1], ["y", tile.y + tile.height, -1],
+  ];
+  for (const [axis, limit, sign] of boundaries) {
+    const input = result;
+    result = [];
+    for (let i = 0; i < input.length; i++) {
+      const a = input[i];
+      const b = input[(i + 1) % input.length];
+      const aInside = sign * (a[axis] - limit) >= 0;
+      const bInside = sign * (b[axis] - limit) >= 0;
+      if (aInside) result.push(a);
+      if (aInside !== bInside) {
+        const t = (limit - a[axis]) / (b[axis] - a[axis]);
+        result.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) });
+      }
+    }
+  }
+  return result;
+}
+
+function getBoardTileSizeForBarAxis(barAxis = "H", board = boardSize) {
+  if (board.key === "300x600") {
+    return barAxis === "V" ? { width: 300, height: 600 } : { width: 600, height: 300 };
+  }
+  // 910mmの辺がWバー（ダブルバー）と平行になる向きにそろえる。
+  const sideA = Number(board.width) || 910;
+  const sideB = Number(board.height) || 1820;
+  const parallelSide = Math.abs(sideA - 910) <= Math.abs(sideB - 910) ? sideA : sideB;
+  const crossSide = parallelSide === sideA ? sideB : sideA;
+
+  if (barAxis === "V") {
+    return { width: crossSide, height: parallelSide };
+  }
+
+  return { width: parallelSide, height: crossSide };
+}
+
+function getBrickBoardOffset(barAxis = "H", board = boardSize, settings = {}) {
+  const brick = board.key === "300x600" || board.key === "455x910" ||
+    (board.key === "910x910" && settings.squareBoardPattern === "brick");
+  if (!brick) return { axis: null, amount: 0 };
+
+  // ジプトーンはレンガ貼り。次段ごとに910mm辺方向へ455mmずらす。
+  // Wバーが横方向なら910mm辺はX方向、Wバーが縦方向なら910mm辺はY方向。
+  return {
+    axis: barAxis === "V" ? "y" : "x",
+    amount: board.key === "300x600" ? 300 : 455,
+  };
+}
+
+function getBoardGridStart(box, barAxis = "H", tileSize = boardSize, points = [], settings = {}, layer = "board") {
+  const crossMin = barAxis === "V" ? box.minX : box.minY;
+  const crossMax = barAxis === "V" ? box.maxX : box.maxY;
+  const crossStep = barAxis === "V" ? tileSize.width : tileSize.height;
+  // 岩綿の300mm辺：芯割りは中心に目地、芯跨ぎは中心に板の中央（150mm）。
+  const anchors = layer === "rockWool" && isRockWoolSetting(settings)
+    ? [(crossMin + crossMax) / 2 - (settings.centerBarType === "single" ? crossStep / 2 : 0)]
+    : getBoardJointAnchors(box, barAxis, settings);
+  // 横はWバーの位置、縦は910mm辺方向の中心を独立した割付基準にする。
+  const alongMin = barAxis === "V" ? box.minY : box.minX;
+  const alongMax = barAxis === "V" ? box.maxY : box.maxX;
+  const alongStep = barAxis === "V" ? tileSize.height : tileSize.width;
+  const alongCenter = (alongMin + alongMax) / 2;
+  // 岩綿の縦芯跨ぎは中心−150mmに目地。3×3の芋貼りは455mm、それ以外は227.5mm。
+  const verticalStraddleOffset = layer === "rockWool" && isRockWoolSetting(settings) ? 150
+    : getBoardSizeOption(settings).key === "910x910" &&
+      settings.squareBoardPattern !== "brick" ? 455 : 227.5;
+  const alongAnchor = settings.verticalCenterBarType === "single"
+    ? alongCenter - verticalStraddleOffset
+    : alongCenter;
+  const alongStart = usesCenteredBoardLayout(settings, layer)
+    ? alignBoardGridStart(alongMin, alongStep, [alongAnchor])
+    : alongMin;
+
+  if (barAxis === "V") {
+    return {
+      x: alignBoardGridStart(box.minX, Number(tileSize.width) || 1, anchors),
+      y: alongStart,
+    };
+  }
+
+  return {
+    x: alongStart,
+    y: alignBoardGridStart(box.minY, Number(tileSize.height) || 1, anchors),
+  };
+}
+
+function getBoardJointAnchors(box, barAxis = "H", settings = {}) {
+  const min = barAxis === "V" ? box.minX : box.minY;
+  const max = barAxis === "V" ? box.maxX : box.maxY;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return [];
+
+  // 基本303(w1820)は従来どおり端部基準。
+  if (isLeftTopBarSetting(settings)) return [min];
+
+  const center = (min + max) / 2;
+  const doublePitch = Math.max(
+    Number(settings.barPitch) || 303,
+    Number(settings.barW) || 1820
+  );
+
+  // 芯割り：中心のダブルバーをボードジョイント基準にする。
+  if ((settings.centerBarType || "double") !== "single") {
+    return [center];
+  }
+
+  // 芯跨ぎ：中心ではなく、中心を跨ぐ左右/上下のダブルバーを基準にする。
+  return [center - doublePitch / 2, center + doublePitch / 2];
+}
+
+function alignBoardGridStart(min, step, anchors = []) {
+  if (!anchors.length || step <= 0) return min;
+
+  const anchor = anchors.reduce((best, value) =>
+    Math.abs(value - min) < Math.abs(best - min) ? value : best
+  , anchors[0]);
+
+  return anchor - Math.ceil((anchor - min) / step) * step;
+}
+
+function formatGlueAmount(grams) {
+  const bags = Math.floor(grams / 3000);
+  const remainder = grams % 3000;
+  if (!bags) return `${grams} g`;
+  return `${grams} g（${bags}袋${remainder ? `+${remainder}g` : ""}）`;
+}
+
+function formatSheetBundle(count, sheetsPerTsubo = 8) {
+  const sheets = Math.max(0, Math.round(Number(count) || 0));
+  const perTsubo = Math.max(1, Math.round(Number(sheetsPerTsubo) || 8));
+  const tsubo = Math.floor(sheets / perTsubo);
+  const remainder = sheets % perTsubo;
+
+  if (tsubo > 0 && remainder > 0) return `${tsubo}坪+${remainder}枚`;
+  if (tsubo > 0) return `${tsubo}坪`;
+  return `${remainder}枚`;
+}
+
+function getBoardLabelPoint(tile, polygon) {
+  const labelBox = tile.usedRect || tile;
+  const center = {
+    x: labelBox.x + labelBox.width / 2,
+    y: labelBox.y + labelBox.height / 2,
+  };
+
+  if (pointInPolygon(center, polygon)) return center;
+
+  const candidates = [
+    center,
+    { x: labelBox.x + labelBox.width * 0.5, y: labelBox.y + labelBox.height * 0.35 },
+    { x: labelBox.x + labelBox.width * 0.5, y: labelBox.y + labelBox.height * 0.65 },
+    { x: labelBox.x + labelBox.width * 0.35, y: labelBox.y + labelBox.height * 0.5 },
+    { x: labelBox.x + labelBox.width * 0.65, y: labelBox.y + labelBox.height * 0.5 },
+    { x: labelBox.x + labelBox.width * 0.35, y: labelBox.y + labelBox.height * 0.35 },
+    { x: labelBox.x + labelBox.width * 0.65, y: labelBox.y + labelBox.height * 0.35 },
+    { x: labelBox.x + labelBox.width * 0.35, y: labelBox.y + labelBox.height * 0.65 },
+    { x: labelBox.x + labelBox.width * 0.65, y: labelBox.y + labelBox.height * 0.65 },
+  ];
+
+  const inside = candidates
+    .filter((point) => pointInPolygon(point, polygon))
+    .sort((a, b) => distance(a, center) - distance(b, center));
+
+  if (inside.length) return inside[0];
+
+  const clipped = getBoardUsedRect(tile, polygon);
+  const clippedCenter = {
+    x: clipped.x + clipped.width / 2,
+    y: clipped.y + clipped.height / 2,
+  };
+
+  if (pointInPolygon(clippedCenter, polygon)) return clippedCenter;
+
+  // 凹形の切欠きをまたぐ場合も、同じタイル内の実際に貼る部分に置く。
+  const xs = [...new Set([labelBox.x, labelBox.x + labelBox.width,
+    ...polygon.map((p) => p.x).filter((x) => x > labelBox.x && x < labelBox.x + labelBox.width)])].sort((a,b) => a-b);
+  const ys = [...new Set([labelBox.y, labelBox.y + labelBox.height,
+    ...polygon.map((p) => p.y).filter((y) => y > labelBox.y && y < labelBox.y + labelBox.height)])].sort((a,b) => a-b);
+  let best = null;
+  let bestArea = 0;
+  for (let y = 0; y < ys.length - 1; y++) {
+    for (let x = 0; x < xs.length - 1; x++) {
+      const candidate = { x: (xs[x] + xs[x+1]) / 2, y: (ys[y] + ys[y+1]) / 2 };
+      const area = (xs[x+1] - xs[x]) * (ys[y+1] - ys[y]);
+      if (area > bestArea && pointInPolygon(candidate, polygon)) {
+        best = candidate;
+        bestArea = area;
+      }
+    }
+  }
+  return best;
+}
+
+function findNearestInteriorPoint(point, polygon) {
+  const box = getBox(polygon);
+  let best = null;
+  let bestDistance = Infinity;
+  const step = 3;
+
+  for (let y = Math.max(box.minY, point.y - 28); y <= Math.min(box.maxY, point.y + 28); y += step) {
+    for (let x = Math.max(box.minX, point.x - 28); x <= Math.min(box.maxX, point.x + 28); x += step) {
+      const candidate = { x, y };
+      if (!pointInPolygon(candidate, polygon)) continue;
+      const d = distance(candidate, point);
+      if (d < bestDistance) {
+        best = candidate;
+        bestDistance = d;
+      }
+    }
+  }
+
+  return best;
+}
+
+function findStockPiece(stock, width, height) {
+  const candidates = stock
+    .map((piece, index) => ({
+      piece,
+      index,
+      area: piece.width * piece.height,
+    }))
+    .filter(({ piece }) => piece.width >= width - 0.001 && piece.height >= height - 0.001)
+    .sort((a, b) => a.area - b.area);
+
+  return candidates[0] || null;
+}
+
+function normalizeUsedRectForSource(tile, usedRect, sourceSize) {
+  const x = Math.max(0, Math.min(sourceSize.width, usedRect.x - tile.x));
+  const y = Math.max(0, Math.min(sourceSize.height, usedRect.y - tile.y));
+  const width = Math.max(1, Math.min(sourceSize.width - x, usedRect.width));
+  const height = Math.max(1, Math.min(sourceSize.height - y, usedRect.height));
+
+  return { x, y, width, height };
+}
+
+function addBoardOffcutsFromUsedRect(stock, source, usedRect) {
+  const minReusable = 180;
+  const sourceWidth = source.width;
+  const sourceHeight = source.height;
+  const boardNo = source.boardNo;
+  const usedLeft = Math.max(0, usedRect.x);
+  const usedTop = Math.max(0, usedRect.y);
+  const usedRight = Math.min(sourceWidth, usedRect.x + usedRect.width);
+  const usedBottom = Math.min(sourceHeight, usedRect.y + usedRect.height);
+
+  const pieces = [
+    {
+      // 左側に残る縦長端材
+      width: usedLeft,
+      height: sourceHeight,
+    },
+    {
+      // 右側に残る縦長端材
+      width: sourceWidth - usedRight,
+      height: sourceHeight,
+    },
+    {
+      // 上側に残る横長端材
+      width: Math.max(0, usedRight - usedLeft),
+      height: usedTop,
+    },
+    {
+      // 下側に残る横長端材
+      width: Math.max(0, usedRight - usedLeft),
+      height: sourceHeight - usedBottom,
+    },
+  ];
+
+  pieces.forEach((piece) => {
+    if (piece.width < minReusable || piece.height < minReusable) return;
+    stock.push({
+      width: piece.width,
+      height: piece.height,
+      boardNo,
+    });
+  });
+
+  stock.sort((a, b) => a.width * a.height - b.width * b.height);
+}
+
+function tileIsMostlyInsidePolygon(tile, polygon) {
+  const pad = 2;
+  const points = [
+    { x: tile.x + pad, y: tile.y + pad },
+    { x: tile.x + tile.width - pad, y: tile.y + pad },
+    { x: tile.x + pad, y: tile.y + tile.height - pad },
+    { x: tile.x + tile.width - pad, y: tile.y + tile.height - pad },
+  ];
+
+  return points.every((point) => pointInPolygon(point, polygon));
+}
+
+function tileIntersectsPolygon(tile, polygon) {
+  const samples = [
+    { x: tile.x + tile.width / 2, y: tile.y + tile.height / 2 },
+    { x: tile.x + 1, y: tile.y + 1 },
+    { x: tile.x + tile.width - 1, y: tile.y + 1 },
+    { x: tile.x + 1, y: tile.y + tile.height - 1 },
+    { x: tile.x + tile.width - 1, y: tile.y + tile.height - 1 },
+  ];
+
+  if (samples.some((point) => pointInPolygon(point, polygon))) return true;
+
+  return polygon.some(
+    (point) =>
+      point.x >= tile.x &&
+      point.x <= tile.x + tile.width &&
+      point.y >= tile.y &&
+      point.y <= tile.y + tile.height
+  );
+}
+
+function estimateTileInsideArea(tile, polygon) {
+  const cols = 8;
+  const rows = 8;
+  let inside = 0;
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const point = {
+        x: tile.x + tile.width * ((col + 0.5) / cols),
+        y: tile.y + tile.height * ((row + 0.5) / rows),
+      };
+      if (pointInPolygon(point, polygon)) inside += 1;
+    }
+  }
+
+  return (inside / (cols * rows)) * tile.width * tile.height;
+}
+
+function boardUsedRectHasInterior(rect, polygon) {
+  const samples = [
+    { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+    { x: rect.x + rect.width * 0.35, y: rect.y + rect.height * 0.35 },
+    { x: rect.x + rect.width * 0.65, y: rect.y + rect.height * 0.35 },
+    { x: rect.x + rect.width * 0.35, y: rect.y + rect.height * 0.65 },
+    { x: rect.x + rect.width * 0.65, y: rect.y + rect.height * 0.65 },
+  ];
+
+  return samples.some((point) => pointInPolygon(point, polygon));
+}
+
+function getBoardUsedRect(tile, polygon) {
+  const points = [];
+  const rect = getTileRectPoints(tile);
+
+  rect.forEach((point) => {
+    if (pointInPolygon(point, polygon) || pointOnPolygonBoundary(point, polygon)) {
+      points.push(point);
+    }
+  });
+
+  polygon.forEach((point) => {
+    if (pointInTileRect(point, tile)) {
+      points.push(point);
+    }
+  });
+
+  const rectEdges = getClosedEdges(closePolygon(rect));
+  const polygonEdges = getClosedEdges(closePolygon(polygon));
+
+  polygonEdges.forEach((edgeA) => {
+    rectEdges.forEach((edgeB) => {
+      const point = segmentIntersectionPoint(edgeA.a, edgeA.b, edgeB.a, edgeB.b);
+      if (point) points.push(point);
+    });
+  });
+
+  if (!points.length) {
+    return { ...tile };
+  }
+
+  const unique = dedupeLoosePoints(points);
+  const box = getBox(unique);
+
+  return {
+    x: box.minX,
+    y: box.minY,
+    width: Math.max(1, box.maxX - box.minX),
+    height: Math.max(1, box.maxY - box.minY),
+  };
+}
+
+function getTileRectPoints(tile) {
+  return [
+    { x: tile.x, y: tile.y },
+    { x: tile.x + tile.width, y: tile.y },
+    { x: tile.x + tile.width, y: tile.y + tile.height },
+    { x: tile.x, y: tile.y + tile.height },
+  ];
+}
+
+function getClosedEdges(points) {
+  const closed = closePolygon(points || []);
+  const edges = [];
+
+  for (let i = 0; i < closed.length - 1; i++) {
+    edges.push({ a: closed[i], b: closed[i + 1] });
+  }
+
+  return edges;
+}
+
+function pointInTileRect(point, tile, tol = 1) {
+  return (
+    point.x >= tile.x - tol &&
+    point.x <= tile.x + tile.width + tol &&
+    point.y >= tile.y - tol &&
+    point.y <= tile.y + tile.height + tol
+  );
+}
+
+function pointOnPolygonBoundary(point, polygon) {
+  return getClosedEdges(polygon).some(
+    (edge) => distanceToSegment(point, edge.a, edge.b) <= 1
+  );
+}
+
+function segmentIntersectionPoint(a, b, c, d) {
+  const den = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
+  if (Math.abs(den) < 0.001) return null;
+
+  const t =
+    ((a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x)) / den;
+  const u =
+    -((a.x - b.x) * (a.y - c.y) - (a.y - b.y) * (a.x - c.x)) / den;
+
+  if (t < -0.001 || t > 1.001 || u < -0.001 || u > 1.001) return null;
+
+  return {
+    x: a.x + t * (b.x - a.x),
+    y: a.y + t * (b.y - a.y),
+  };
+}
+
+function dedupeLoosePoints(points) {
+  const out = [];
+
+  (points || []).forEach((point) => {
+    const rounded = {
+      x: Math.round(point.x * 10) / 10,
+      y: Math.round(point.y * 10) / 10,
+    };
+    if (!out.some((p) => Math.abs(p.x - rounded.x) <= 1 && Math.abs(p.y - rounded.y) <= 1)) {
+      out.push(rounded);
+    }
+  });
+
+  return out;
+}
+
+function formatAreaM2(value) {
+  const rounded = Math.round((Number(value) || 0) * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded.toFixed(2));
 }
 
 function makeChannelResult(dims, shape, pitch = 910, margin = 100) {
@@ -3430,9 +4732,7 @@ function makeBarPlan(points, settings = {}) {
   const pitch = Math.max(1, Number(settings.barPitch) || 303);
   const doublePitch = Math.max(pitch, Number(settings.barW) || 1820);
 
-  // 303(w1820) と 364(w1820) は中心基準にしない。
-  // 左上基準で端部バーを残し、W=1820、シングルピッチだけ設定値を使う。
-  // この2設定では芯割り/芯跨ぎボタンと寸法表示も出さない。
+  // 364の下地は端部基準。岩綿の芯割り/芯跨ぎによって移動させない。
   if (isLeftTopBarSetting(settings)) {
     return makeLegacyV38BarPlan(closed, pitch, 1820);
   }
@@ -3446,9 +4746,12 @@ function isLeftTopBarSetting(settings = {}) {
   const pitch = Number(settings.barPitch) || 303;
   const w = Number(settings.barW) || 1820;
 
-  // 最初のページの設定で 303(w1820) と 364(w1820) の時だけ、
-  // 芯割り/芯跨ぎを使わず、左上スタートの従来計算に固定する。
-  return (pitch === 303 && w === 1820) || (pitch === 364 && w === 1820);
+  // 基本303(w1820)と岩綿用364の下地・ボードは端部から割り付ける。
+  return (pitch === 303 && w === 1820) || isRockWoolSetting(settings);
+}
+
+function usesCenteredBoardLayout(settings = {}, layer = "board") {
+  return (isRockWoolSetting(settings) && layer === "rockWool") || !isLeftTopBarSetting(settings);
 }
 
 function makeLegacyV38BarPlan(points, pitch = 303, doublePitch = 1820) {
@@ -3846,12 +5149,14 @@ function makeCenteredBarDimensionLabels(box, barAxis, positions = [], doublePitc
   const posMax = barAxis === "V" ? box.maxX : box.maxY;
   const posSpan = Math.max(0, posMax - posMin);
   const edgeToCenter = Math.round(posSpan / 2);
-
-  // バーと平行な辺の半分寸法。
-  const parallelSpan = barAxis === "V"
-    ? Math.max(0, box.maxY - box.minY)
-    : Math.max(0, box.maxX - box.minX);
-  const halfParallel = Math.round(parallelSpan / 2);
+  // 364ピッチの岩綿では、芯跨ぎの表示寸法を芯割りの中心寸法−300mmにする。
+  const edgeToCenterLabel = Number(pitch) === 364 && centerBarType === "single"
+    ? Math.max(0, edgeToCenter - 300)
+    : calcEdgeToCenterLabelDistance(
+    edgeToCenter,
+    Number(doublePitch) || 0,
+    centerBarType
+  );
 
   // 端部→2本目Wは、芯割り/芯跨ぎの切替とWピッチに連動させる。
   // 例：幅4000、W=455、芯割りの場合は 407.5mm。
@@ -3864,12 +5169,12 @@ function makeCenteredBarDimensionLabels(box, barAxis, positions = [], doublePitc
   );
 
   const sideX = box.maxX + Math.max(900, posSpan * 0.32);
-  const startY = box.minY + Math.max(650, parallelSpan * 0.20);
-  const gapY = Math.max(360, parallelSpan * 0.105);
+  const startY = box.minY + Math.max(650, posSpan * 0.20);
+  const gapY = Math.max(360, posSpan * 0.105);
 
   return [
     {
-      text: `端部→中心 ${edgeToCenter}mm`,
+      text: `端部→中心 ${formatMmLabel(edgeToCenterLabel)}mm`,
       p: { x: sideX, y: startY },
       anchor: "start",
     },
@@ -3878,12 +5183,19 @@ function makeCenteredBarDimensionLabels(box, barAxis, positions = [], doublePitc
       p: { x: sideX, y: startY + gapY },
       anchor: "start",
     },
-    {
-      text: `半分 ${halfParallel}mm`,
-      p: { x: sideX, y: startY + gapY * 2 },
-      anchor: "start",
-    },
   ];
+}
+
+function calcEdgeToCenterLabelDistance(edgeToCenter, doublePitch, centerBarType = "double") {
+  const center = Number(edgeToCenter) || 0;
+  const w = Number(doublePitch) || 0;
+  if (center <= 0) return 0;
+
+  if (centerBarType === "single" && w > 0) {
+    return Math.max(0, Math.round((center - w / 2) * 10) / 10);
+  }
+
+  return Math.round(center * 10) / 10;
 }
 
 
