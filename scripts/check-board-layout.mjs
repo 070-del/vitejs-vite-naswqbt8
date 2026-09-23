@@ -8,7 +8,7 @@ const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
   .replace(/^import[\s\S]*?;\r?\n/gm, '');
 const { code } = await transform(source, { loader: 'jsx', format: 'cjs' });
 const context = { module: { exports: {} } };
-vm.runInNewContext(code + '\nthis.api = { formatGlueAmount, usesCenteredBoardLayout, makeLegacyV38BarPlan, constrainDiagramView, getDiagramGestureView, makeBoardLayout, makeBarPlan, makeShape, getVerticalResultBarDimensionTexts, getResultBarDimensionTexts, makeBoardResult, getBoardLabelPoint, pointInPolygon, makeResults, finalizeResultList, getResultDiagramPages, formatSheetBundle };', context);
+vm.runInNewContext(code + '\nthis.api = { makeAreaResult, formatGlueAmount, usesCenteredBoardLayout, makeLegacyV38BarPlan, constrainDiagramView, getDiagramGestureView, makeBoardLayout, makeBarPlan, makeShape, getVerticalResultBarDimensionTexts, getResultBarDimensionTexts, makeBoardResult, getBoardLabelPoint, pointInPolygon, makeResults, finalizeResultList, getResultDiagramPages, formatSheetBundle };', context);
 const api = context.api;
 const points = [{x:0,y:0},{x:2000,y:0},{x:2000,y:2300},{x:3900,y:2300},{x:3900,y:700},{x:6000,y:700},{x:6000,y:5200},{x:0,y:5200},{x:0,y:0}];
 const dims = {A:2000,B:2300,C:1900,D:1600,E:2100,F:4500,G:6000,H:5200};
@@ -64,7 +64,7 @@ for (const axis of ['H', 'V']) {
 assert.deepEqual(Array.from(api.getVerticalResultBarDimensionTexts(dims, shape, {...settings, verticalCenterBarType:'single'})), ['縦端部→中心 3000mm','縦端部→2本目W 497.5mm / 42.5mm']);
 const squareSettings = {barPitch:303,barW:910,barType:'3×3ジプトーン',centerBarType:'double'};
 const squareRoom = [{x:0,y:0},{x:1820,y:0},{x:1820,y:1820},{x:0,y:1820},{x:0,y:0}];
-assert.equal(api.makeBoardResult(squareRoom,settings,'H'),'8 枚（1坪）','1.5×3 gypsum must use 8 sheets per tsubo');
+assert.equal(api.makeBoardResult(squareRoom,settings,'H'),'8 枚','Board quantities must not include bundled tsubo');
 assert.equal(api.formatSheetBundle(9,8),'1坪+1枚');
 assert.equal(api.formatSheetBundle(5,4),'1坪+1枚');
 for (const axis of ['H','V']) {
@@ -72,7 +72,7 @@ for (const axis of ['H','V']) {
   assert.equal(exact.newBoardCount,4);
   assert.equal(exact.tiles.length,4);
   assert.ok(exact.tiles.every(tile => tile.width === 910 && tile.height === 910),'3×3 must use 910×910 boards');
-  assert.equal(api.makeBoardResult(squareRoom,squareSettings,axis),'4 枚（1坪）');
+  assert.equal(api.makeBoardResult(squareRoom,squareSettings,axis),'4 枚');
   const brick = verify(squareRoom,axis,{...squareSettings,squareBoardPattern:'brick'},1820*1820);
   const crossKey = axis === 'H' ? 'y' : 'x';
   const alongKey = axis === 'H' ? 'x' : 'y';
@@ -105,7 +105,7 @@ assert.equal(api.formatSheetBundle(19,18),'1坪+1枚');
 for (const axis of ['H','V']) {
   const rock = verify(tsuboRoom,axis,rockSettings,1800*1800,'rockWool');
   assert.equal(rock.newBoardCount,18);
-  assert.equal(api.makeBoardResult(tsuboRoom,rockSettings,axis,'rockWool'),'18 枚（1坪）');
+  assert.equal(api.makeBoardResult(tsuboRoom,rockSettings,axis,'rockWool'),'18 枚');
   const across = axis === 'H' ? 'y' : 'x';
   const along = axis === 'H' ? 'x' : 'y';
   const rows = [...new Set(rock.tiles.map(tile=>tile[across]))].sort((a,b)=>a-b);
@@ -179,7 +179,7 @@ for (const centerBarType of ['double','single']) {
   assert.notEqual(ordered[0],ordered[1],'Rock-wool vertical toggle must update terminal dimensions');
 }
 assert.equal(api.getVerticalResultBarDimensionTexts(dims,shape,{...rockSettings,centerBarType:'double',verticalCenterBarType:'single'},'rockWool')[1],'縦端部→2本目W 150mm / 450mm');
-assert.deepEqual(Array.from(materialResults.slice(-3),item=>item.name),['ビス','ピン','しろのり']);
+assert.deepEqual(Array.from(materialResults.slice(-4),item=>item.name),['ビス','ピン','しろのり','面積']);
 const rockCount=parseInt(materialResults.find(item=>item.name==='岩綿').value,10);
 assert.equal(materialResults.find(item=>item.name==='ピン').value,`${rockCount*25} 発`);
 assert.equal(materialResults.find(item=>item.name==='しろのり').value,api.formatGlueAmount(rockCount*30));
@@ -204,7 +204,7 @@ for (const centerBarType of ['double','single']) {
     }
   }
 }
-assert.deepEqual(Array.from(api.finalizeResultList(materialResults).slice(-2),item=>item.name),['ピン','しろのり']);
+assert.deepEqual(Array.from(api.finalizeResultList(materialResults).slice(-3),item=>item.name),['ピン','しろのり','面積']);
 assert.ok(!api.makeResults(dims,squareSettings,shape).some(item=>item.name==='ピン'||item.name==='しろのり'));
 assert.equal(api.getResultBarDimensionTexts(dims,shape,{...settings,centerBarType:'single'})[0],'横端部→中心 2372.5mm');
 assert.equal(api.getResultBarDimensionTexts(dims,shape,rockSettings,'rockWool').length,2);
@@ -217,7 +217,24 @@ assert.equal(base.value,api.makeBoardResult(points,rockSettings,barAxis));
 assert.equal(finish.value,api.makeBoardResult(points,rockSettings,barAxis,'rockWool'));
 assert.equal(api.finalizeResultList(materialResults).find(item=>item.name==='岩綿').value,finish.value,'Saved/shared results must keep both layers');
 assert.ok(!api.makeResults(dims,squareSettings,shape).some(item=>item.category==='finishBoard'));
-console.log('PASS: 364 pitch has three pages, separate 910×1820 and 300×600 layers, 300mm brick offset, 18 sheets/tsubo, retained results, and coverage above 600 pieces.');
+console.log('PASS: 364 pitch has three pages, separate 910×1820 and 300×600 layers, 300mm brick offset, retained results, and coverage above 600 pieces.');
+
+assert.equal(api.makeAreaResult(points).value, '7.67 坪　25.36 ㎡', 'Concave room area must exclude its recesses');
+assert.equal(api.makeAreaResult([...points].reverse()).value, '7.67 坪　25.36 ㎡', 'Area must not depend on winding');
+assert.equal(api.makeAreaResult(squareRoom).value, '1.00 坪　3.31 ㎡');
+assert.equal(api.makeAreaResult(null).value, '寸法未入力');
+assert.equal(api.makeAreaResult([]).value, '寸法未入力');
+assert.equal(materialResults.at(-1).value, '7.67 坪　25.36 ㎡');
+assert.equal(api.makeResults(dims, squareSettings, shape).at(-1).value, materialResults.at(-1).value, 'Board choice must not change room area');
+const legacy = [{name:'ボード',value:'9 枚（4坪+1枚）',category:'board'},{name:'岩綿',value:'151 枚（8坪+7枚）',category:'finishBoard'}];
+const restored = api.finalizeResultList(legacy, points);
+assert.equal(restored.find(item=>item.category==='board').value, '9 枚');
+assert.equal(restored.find(item=>item.category==='finishBoard').value, '151 枚');
+assert.equal(restored.find(item=>item.name==='ビス').value, '72 発');
+assert.equal(restored.at(-1).value, '7.67 坪　25.36 ㎡');
+assert.equal(api.finalizeResultList(restored).filter(item=>item.category==='area').length, 1);
+assert.equal(api.finalizeResultList(restored).at(-1).value, restored.at(-1).value);
+console.log('PASS: polygon area in tsubo/m2, saved-result migration, and sheet-only board quantities.');
 
 const startView={scale:1,x:0,y:0};
 const pinch=api.getDiagramGestureView(startView,[{x:100,y:100},{x:200,y:100}],[{x:50,y:100},{x:250,y:100}],300,200);

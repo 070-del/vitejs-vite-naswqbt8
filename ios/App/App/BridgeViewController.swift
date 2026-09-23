@@ -14,6 +14,8 @@ class BridgeViewController: CAPBridgeViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.insetsLayoutMarginsFromSafeArea = false
+        webView?.scrollView.bounces = false
+        webView?.scrollView.alwaysBounceVertical = false
         setNeedsStatusBarAppearanceUpdate()
     }
 

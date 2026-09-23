@@ -1,4 +1,4 @@
-const CACHE_NAME = "keitens-hiroihashi-v56";
+const CACHE_NAME = "keitens-hiroihashi-v73";
 const APP_SHELL = [
   "/",
   "/index.html",

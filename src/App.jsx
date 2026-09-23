@@ -15,6 +15,8 @@
 // V24_CHANNEL_UNIFIED_SINGLE_SOURCE
 import { useEffect, useId, useRef, useState } from "react";
 import "./App.css";
+import "./AppTheme.css";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Eraser, Home, Menu, MessageCircle, Ruler, Save, Share2 } from "lucide-react";
 import {
   tapHaptic,
   successHaptic,
@@ -45,7 +47,7 @@ const defaultPoints = [
 ];
 
 const barPitchOptions = [
-  { pitch: 303, w: 1820, name: "基本" },
+  { pitch: 303, w: 1820, name: "3×6ボード" },
   { pitch: 227, w: 455, name: "1.5×3ジプトーン" },
   { pitch: 303, w: 910, name: "3×3ジプトーン" },
   { pitch: 364, w: 1820, name: "岩綿" },
@@ -56,6 +58,10 @@ const smallGypsumBoardSize = { key: "455x910", width: 455, height: 910, name: "4
 const squareGypsumBoardSize = { key: "910x910", width: 910, height: 910, name: "910×910mm", sheetsPerTsubo: 4 };
 const rockWoolBoardSize = { key: "300x600", width: 300, height: 600, name: "300×600mm", sheetsPerTsubo: 18 };
 
+function getBarTypeName(settings = {}) {
+  return !settings.barType || settings.barType === "基本" ? "3×6ボード" : settings.barType;
+}
+
 function isRockWoolSetting(settings = {}) {
   return Number(settings.barPitch) === 364;
 }
@@ -65,11 +71,25 @@ function getResultDiagramPages(settings = {}) {
 }
 
 const userProfileStorageKey = "ceiling-user-profile";
+const answerHistoryStorageKey = "keiten-answer-history";
+// Keep the unfinished paid service unavailable in the App Store release.
+const keitenQuestionsEnabled = false;
+
+function normalizeAnswerHistory(value) {
+  if (!Array.isArray(value)) throw new Error("Invalid answer history");
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry.question !== "string" || typeof entry.answeredAt !== "string") return [];
+    const question = entry.question.trim();
+    const timestamp = Date.parse(entry.answeredAt);
+    if (!question || !Number.isFinite(timestamp)) return [];
+    return [{ question, answeredAt: new Date(timestamp).toISOString(), timestamp }];
+  }).sort((a, b) => b.timestamp - a.timestamp);
+}
 
 function isUserProfileComplete(profile) {
   return Boolean(
     profile?.name?.trim() &&
-      profile?.company?.trim() &&
+      profile?.address?.trim() &&
       profile?.phone?.trim() &&
       profile?.email?.trim()
   );
@@ -84,7 +104,7 @@ export default function App() {
   const [settings, setSettings] = useState({
     barPitch: 303,
     barW: 1820,
-    barType: "基本",
+    barType: "3×6ボード",
     bisPitch: 303,
     boardSizeKey: "910x1820",
     finish: "岩綿",
@@ -102,7 +122,7 @@ export default function App() {
   const [userProfileLoaded, setUserProfileLoaded] = useState(false);
   const [userProfile, setUserProfile] = useState({
     name: "",
-    company: "",
+    address: "",
     phone: "",
     email: "",
   });
@@ -120,7 +140,8 @@ export default function App() {
 
   const canvasRef = useRef(null);
   const canvasReady = useRef(false);
-  const drawing = useRef(false);
+  const canvasDisplaySize = useRef(null);
+  const drawingPointerId = useRef(null);
   const pointsRef = useRef([]);
 
   useEffect(() => {
@@ -135,6 +156,7 @@ export default function App() {
     let lastTouchY = 0;
     const preventHorizontalTouch = (e) => {
       if (e.touches.length !== 1) return;
+      if (e.target.closest?.(".savedSwipeSurface")) return;
       const dx = Math.abs(e.touches[0].clientX - lastTouchX);
       const dy = Math.abs(e.touches[0].clientY - lastTouchY);
       if (dx > dy && dx > 4) {
@@ -167,7 +189,7 @@ export default function App() {
         const profile = JSON.parse(raw);
         setUserProfile({
           name: profile?.name || "",
-          company: profile?.company || "",
+          address: profile?.address || "",
           phone: profile?.phone || "",
           email: profile?.email || "",
         });
@@ -251,14 +273,29 @@ export default function App() {
 
       canvas.width = targetW;
       canvas.height = targetH;
-      canvas.style.width = cssW + "px";
-      canvas.style.height = cssH + "px";
+      const previousSize = canvasDisplaySize.current;
+      if (previousSize) {
+        pointsRef.current = pointsRef.current.map((point) => ({
+          x: point.x * cssW / previousSize.width,
+          y: point.y * cssH / previousSize.height,
+        }));
+      }
+      canvasDisplaySize.current = { width: cssW, height: cssH };
       const ctx = canvas.getContext("2d");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.lineWidth = 4;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.strokeStyle = "#111827";
+      // Preserve the stroke across layout resizing and returning to the drawing page.
+      if (pointsRef.current.length > 1) {
+        ctx.beginPath();
+        pointsRef.current.forEach((point, index) => {
+          if (index === 0) ctx.moveTo(point.x, point.y);
+          else ctx.lineTo(point.x, point.y);
+        });
+        ctx.stroke();
+      }
       canvasReady.current = true;
     };
 
@@ -338,11 +375,12 @@ export default function App() {
   };
 
   const startDraw = (e) => {
+    if (!e.isPrimary || e.button !== 0 || drawingPointerId.current !== null) return;
     e.preventDefault();
     ensureCanvasSize();
-    e.target.setPointerCapture(e.pointerId);
-    drawing.current = true;
-    pointsRef.current = [];
+    clearCanvas();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drawingPointerId.current = e.pointerId;
 
     const p = getPoint(e);
     pointsRef.current.push(p);
@@ -357,7 +395,7 @@ export default function App() {
   };
 
   const draw = (e) => {
-    if (!drawing.current) return;
+    if (drawingPointerId.current !== e.pointerId) return;
     e.preventDefault();
 
     const p = getPoint(e);
@@ -384,16 +422,22 @@ export default function App() {
   };
 
   const endDraw = (e) => {
-    if (drawing.current && e && e.target && e.pointerId !== undefined) {
-      e.target.releasePointerCapture(e.pointerId);
+    if (drawingPointerId.current !== e.pointerId) return;
+    drawingPointerId.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    drawing.current = false;
   };
 
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const pointerId = drawingPointerId.current;
+    drawingPointerId.current = null;
+    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) {
+      canvas.releasePointerCapture(pointerId);
+    }
     const ctx = canvas.getContext("2d");
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -463,7 +507,7 @@ export default function App() {
     }
 
     for (const key of keys) {
-      if (!key || !key.startsWith("ceiling-")) continue;
+      if (!key || !key.startsWith("ceiling-") || key === userProfileStorageKey) continue;
 
       try {
         const raw = await loadFromNativeStorage(key);
@@ -542,14 +586,14 @@ export default function App() {
   const saveUserProfile = async (profile) => {
     const cleanProfile = {
       name: profile.name?.trim() || "",
-      company: profile.company?.trim() || "",
+      address: profile.address?.trim() || "",
       phone: profile.phone?.trim() || "",
       email: profile.email?.trim() || "",
     };
 
     if (!isUserProfileComplete(cleanProfile)) {
       await warningHaptic();
-      await showAlert("ユーザー情報はすべて必須です。氏名、会社名、電話番号、メールアドレスを入力してください。");
+      await showAlert("ユーザー情報はすべて必須です。氏名、住所、電話番号、メールアドレスを入力してください。");
       return false;
     }
 
@@ -580,6 +624,7 @@ export default function App() {
   };
 
   const openKeitenQuestion = async () => {
+    if (!keitenQuestionsEnabled) return;
     await tapHaptic();
     if (!isUserProfileComplete(userProfile)) {
       setShowUserProfile(true);
@@ -597,44 +642,20 @@ export default function App() {
       return false;
     }
 
-    const resultLines = results.length
-      ? results.map((item) => `${item.name}: ${item.value}`)
-      : ["計算結果なし"];
-
-    const text = [
-      "【軽天について質問】",
-      "",
-      "■ ユーザー情報",
-      `氏名: ${userProfile.name}`,
-      `会社名: ${userProfile.company}`,
-      `電話番号: ${userProfile.phone}`,
-      `メール: ${userProfile.email}`,
-      "",
-      "■ 質問内容",
-      cleanQuestion,
-      "",
-      "■ 現在の計算結果",
-      ...resultLines,
-      "",
-      `設定: バーピッチ ${settings.barPitch}(w${settings.barW}) / ボード ${getBoardSizeOption(settings).name}`,
-    ].join("\n");
-
-    await shareResults("軽天について質問", text);
-    return true;
+    await showAlert("質問の受付は準備中です。送信・決済サービスの接続後にご利用いただけます。");
+    return false;
   };
 
   return (
-    <div className="app">
-      <Header title={page === 3 ? "" : "天井の形を入力してください"} onMenuClick={openSavedRooms} />
+    <div className="app selectedDesign">
+      <Header home={page === 1} title={page === 3 ? "" : "天井の形を入力してください"} onMenuClick={openSavedRooms} />
 
       {page === 1 && (
-        <main className="page">
+        <main className={`page homePage${keitenQuestionsEnabled ? "" : " calculationOnly"}`}>
           <div className="topButtons right">
-            <button className="primary" onClick={aiCleanShape}>
-              ✓ OK
-            </button>
-            <button className="outline" onClick={clearCanvas}>
-              🗑 クリア
+            <h2>天井の形を入力してください</h2>
+            <button className="iconButton" onClick={clearCanvas} aria-label="図形をクリア" title="図形をクリア">
+              <Eraser size={20} />
             </button>
           </div>
 
@@ -651,18 +672,22 @@ export default function App() {
               onPointerUp={endDraw}
               onPointerLeave={endDraw}
               onPointerCancel={endDraw}
+              onLostPointerCapture={endDraw}
             />
           </section>
-
-          <h2 className="sectionTitle">設定カスタム</h2>
 
           <section className="settingCard">
             <BarPitchSelector settings={settings} setSettings={setSettings} />
           </section>
 
-          <button className="questionWideBtn" onClick={openKeitenQuestion}>
-            軽天について質問する
+          <button className="primary homeContinue" onClick={aiCleanShape}>
+            寸法入力へ <ArrowRight size={19} />
           </button>
+          {keitenQuestionsEnabled && (
+            <button className="questionWideBtn" onClick={openKeitenQuestion}>
+              <MessageCircle size={19} /><span>軽天について質問する</span><ChevronRight size={18} />
+            </button>
+          )}
         </main>
       )}
 
@@ -675,6 +700,7 @@ export default function App() {
               <div className="dimRow" key={edge.key}>
                 <div className="dimLabel">{edge.key}</div>
                 <input
+                  aria-label={`${edge.key}辺の寸法（mm）`}
                   inputMode="numeric"
                   value={dims[edge.key] || ""}
                   onChange={(e) => changeDim(edge.key, e.target.value)}
@@ -687,10 +713,10 @@ export default function App() {
 
           <div className="pageNavButtons">
             <button className="backBtn" onClick={() => setPage(1)}>
-              手書き入力に戻る
+              <ArrowLeft size={18} /> 形状に戻る
             </button>
             <button className="bottomOk" onClick={goToResults}>
-              OK
+              計算する <ArrowRight size={18} />
             </button>
           </div>
         </main>
@@ -824,6 +850,7 @@ export default function App() {
                 className={[
                   "resultRow",
                   item.category === "board" ? "boardSectionRow" : "",
+                  item.category === "area" ? "areaSectionRow" : "",
                   item.name === "ビス" ? "screwResultRow" : "",
                 ].filter(Boolean).join(" ")}
                 key={item.name}
@@ -859,43 +886,40 @@ export default function App() {
           </section>
 
           <section className="saveCard">
-            <label>名前を付けて保存</label>
+            <label htmlFor="project-name">名前を付けて保存</label>
             <input
+              id="project-name"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="例：事務所 A 天井"
             />
             <button className="saveBtn" onClick={saveData}>
-              💾 保存
+              <Save size={18} /> 保存
             </button>
             <button className="shareBtn" onClick={handleShareResults}>
-              📤 結果を共有
-            </button>
-            <button className="questionWideBtn compactQuestionBtn" onClick={openKeitenQuestion}>
-              軽天について質問する
+              <Share2 size={18} /> 結果を共有
             </button>
           </section>
 
           <div className="pageNavButtons">
             <button className="backBtn" onClick={() => setPage(2)}>
-              寸法入力に戻る
+              <ArrowLeft size={18} /> 寸法を修正
             </button>
             <button className="backBtn" onClick={() => setPage(1)}>
-              最初に戻る
+              <Home size={18} /> 最初に戻る
             </button>
           </div>
         </main>
       )}
 
-      {showSavedRooms && (
+      {showSavedRooms && !showUserProfile && (
         <SavedRoomsPanel
           rooms={savedRooms}
+          userName={userProfile.name}
           onClose={() => setShowSavedRooms(false)}
           onDelete={deleteSavedRoom}
-          onRename={renameSavedRoom}
           onOpen={(room) => setSelectedSavedRoom(room)}
           onShowUserProfile={() => {
-            setShowSavedRooms(false);
             setShowUserProfile(true);
           }}
           onShowPrivacy={() => {
@@ -918,7 +942,7 @@ export default function App() {
         />
       )}
 
-      {showQuestionModal && (
+      {keitenQuestionsEnabled && showQuestionModal && (
         <KeitenQuestionModal
           onClose={() => setShowQuestionModal(false)}
           onSubmit={submitKeitenQuestion}
@@ -1024,7 +1048,7 @@ function PrivacyPolicyModal({ onClose }) {
           <p>
             本アプリ「軽天材拾い出し」（以下「本アプリ」）は、ユーザーの個人情報を
             外部サーバーへ送信しません。入力された寸法データ、計算結果、保存データ、
-            ユーザー情報（氏名、会社名、電話番号、メールアドレス）は、すべてお使いの端末内に
+            ユーザー情報（氏名、住所、電話番号、メールアドレス）は、すべてお使いの端末内に
             のみ保存されます。
           </p>
 
@@ -1035,15 +1059,14 @@ function PrivacyPolicyModal({ onClose }) {
             これらのデータはアプリをアンインストールすると削除されます。
           </p>
           <p>
-            保存した部屋データは、アプリ内の「保存データ」メニューからいつでも
+            保存した部屋データは、アプリ内のユーザー情報画面からいつでも
             個別に削除できます。
           </p>
 
           <h4>3. 第三者への提供</h4>
           <p>
             本アプリはユーザーデータを第三者に提供、販売、共有することはありません。
-            ただし、「軽天について質問する」機能でユーザーが共有先を選択した場合、
-            質問内容、ユーザー情報、計算結果がその共有先に送信されます。
+            ただし、ユーザーが計算結果の共有を行った場合、選択した共有先へ計算結果が送信されます。
           </p>
 
           <h4>4. 分析・トラッキング</h4>
@@ -1124,18 +1147,43 @@ function NativeModal({ modal, onClose }) {
   );
 }
 
-function Header({ title, onMenuClick }) {
+function Header({ home, title, onMenuClick }) {
   return (
-    <header className="header" role="banner">
-      <div className="spacer" />
-      <h1>{title}</h1>
-      <button className="menu" onClick={onMenuClick} aria-label="保存データを開く">☰</button>
+    <header className={home ? "header homeHeader" : "header"} role="banner">
+      {home ? (
+        <div className="appBrand"><img src="/pwa-192.png" alt="" width="32" height="32" /><h1>軽天計算</h1></div>
+      ) : (
+        <><div className="spacer" /><h1>{title}</h1></>
+      )}
+      <button className="menu iconButton" onClick={onMenuClick} aria-label="ユーザー情報と保存データを開く" title="ユーザー情報と保存データ"><Menu size={23} /></button>
     </header>
   );
 }
 
 function BarPitchSelector({ settings, setSettings }) {
   const [open, setOpen] = useState(false);
+  const container = useRef(null);
+  const trigger = useRef(null);
+  const optionsId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event) => {
+      if (!container.current?.contains(event.target)) setOpen(false);
+    };
+    const escape = (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        trigger.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
 
   const selectOption = (option) => {
     const leftTopBased = isLeftTopBarSetting({
@@ -1154,32 +1202,35 @@ function BarPitchSelector({ settings, setSettings }) {
       centerBarType: leftTopBased && option.pitch !== 364 ? "double" : settings.centerBarType || "double",
     });
     setOpen(false);
+    trigger.current?.focus();
   };
 
   return (
-    <div className="barPitchBox">
-      <button className="barPitchMain" onClick={() => setOpen(!open)}>
-        <span>バーピッチ</span>
-        <strong>{settings.barPitch}(w{settings.barW || 1820})</strong>
-        <small>{settings.barType || "基本"}</small>
+    <div className="barPitchBox" ref={container}>
+      <button className="barPitchMain" ref={trigger} onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={optionsId}>
+        <Ruler size={21} className="pitchIcon" />
+        <span className="pitchBoard"><small>ボード・バーピッチ</small><strong>{getBarTypeName(settings)}</strong></span>
+        <span className="pitchNumbers"><b>{settings.barPitch} mm</b><small>W {settings.barW || 1820}</small></span>
+        <ChevronDown size={18} className={open ? "pitchChevron expanded" : "pitchChevron"} />
       </button>
 
       {open && (
-        <div className="barPitchOptions">
+        <div className="barPitchOptions" id={optionsId} role="group" aria-label="ボードとバーピッチ">
           {barPitchOptions.map((option) => (
             <button
               key={`${option.pitch}-${option.w}-${option.name}`}
               className={
                 settings.barPitch === option.pitch &&
                 settings.barW === option.w &&
-                settings.barType === option.name
+                getBarTypeName(settings) === option.name
                   ? "barPitchOption active"
                   : "barPitchOption"
               }
               onClick={() => selectOption(option)}
+              aria-pressed={settings.barPitch === option.pitch && settings.barW === option.w}
             >
-              <strong>{option.pitch}(w{option.w})</strong>
               <span>{option.name}</span>
+              <strong>{option.pitch}<small>W {option.w}</small></strong>
             </button>
           ))}
         </div>
@@ -1295,51 +1346,149 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false, direction
   );
 }
 
+function SavedRoomItem({ room, isOpen, onOpenChange, onOpen, onDelete }) {
+  const [dragOffset, setDragOffset] = useState(null);
+  const gesture = useRef(null);
+  const suppressClick = useRef(false);
+  const actionWidth = 80;
+
+  const startSwipe = (e) => {
+    if (!e.isPrimary || e.button !== 0 || gesture.current) return;
+    suppressClick.current = false;
+    gesture.current = {
+      pointerId: e.pointerId, x: e.clientX, y: e.clientY,
+      startOffset: isOpen ? -actionWidth : 0,
+      offset: isOpen ? -actionWidth : 0, axis: null,
+    };
+  };
+
+  const moveSwipe = (e) => {
+    const current = gesture.current;
+    if (!current || current.pointerId !== e.pointerId) return;
+    const dx = e.clientX - current.x;
+    const dy = e.clientY - current.y;
+    // Lock the direction so normal list scrolling never reveals deletion.
+    if (!current.axis) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+      current.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (current.axis === "x") {
+        suppressClick.current = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+    }
+    if (current.axis !== "x") return;
+    e.preventDefault();
+    current.offset = Math.max(-actionWidth, Math.min(0, current.startOffset + dx));
+    setDragOffset(current.offset);
+  };
+
+  const finishSwipe = (e) => {
+    const current = gesture.current;
+    if (!current || current.pointerId !== e.pointerId) return;
+    gesture.current = null;
+    if (current.axis === "x" && e.type === "pointerup") {
+      onOpenChange(current.offset <= -actionWidth / 2);
+    }
+    setDragOffset(null);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  const remove = () => {
+    onOpenChange(false);
+    onDelete(room.key);
+  };
+
+  return (
+    <div className="savedSwipeItem">
+      <button
+        className="savedSwipeDelete"
+        style={{ visibility: isOpen || dragOffset < 0 ? "visible" : "hidden" }}
+        disabled={!isOpen || dragOffset !== null}
+        tabIndex={isOpen ? 0 : -1}
+        aria-hidden={!isOpen}
+        aria-label={`${room.name || "未入力"}を削除`}
+        onClick={remove}
+      >
+        削除
+      </button>
+      <div
+        className="savedSwipeSurface"
+        style={{ transform: `translateX(${dragOffset ?? (isOpen ? -actionWidth : 0)}px)`, transition: dragOffset !== null ? "none" : undefined }}
+        onPointerDown={startSwipe}
+        onPointerMove={moveSwipe}
+        onPointerUp={finishSwipe}
+        onPointerLeave={finishSwipe}
+        onPointerCancel={finishSwipe}
+        onLostPointerCapture={finishSwipe}
+        onClickCapture={(e) => {
+          if (suppressClick.current && e.detail !== 0) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        onKeyDown={(e) => {
+          if (["ArrowLeft", "ArrowRight", "Escape", "Delete"].includes(e.key)) {
+            e.preventDefault();
+            if (e.key === "Delete") remove();
+            else onOpenChange(e.key === "ArrowLeft");
+          }
+        }}
+      >
+        <button className="savedRowOpen" onClick={() => {
+          if (isOpen) onOpenChange(false);
+          else onOpen(room);
+        }}>
+          <strong>{room.name || "未入力"}</strong>
+          <small>{room.savedAt || "日時なし"}</small>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SavedRoomsPanel({
   rooms,
+  userName,
   onClose,
   onDelete,
-  onRename,
   onOpen,
   onShowUserProfile,
   onShowPrivacy,
   onShowTerms,
 }) {
+  const [openRoomKey, setOpenRoomKey] = useState(null);
+
   return (
     <div className="drawerOverlay">
       <aside className="savedDrawer">
         <div className="drawerHeader">
-          <strong>保存データ</strong>
+          <button
+            className="drawerProfileButton"
+            onClick={onShowUserProfile}
+            aria-label={`${userName?.trim() || "ユーザー"}のプロフィールを編集`}
+            title="プロフィールを編集"
+          >
+            {userName?.trim() || "ユーザー情報"}
+          </button>
           <button onClick={onClose} aria-label="閉じる">×</button>
         </div>
 
-        <div className="drawerMenuActions">
-          <button onClick={onShowUserProfile}>ユーザー情報を登録</button>
-        </div>
+        <h2 className="savedListTitle">データ</h2>
 
         {!rooms.length && <p className="emptySaved">保存データはまだありません。</p>}
 
         <div className="savedList">
           {rooms.map((room) => (
-            <div className="savedItem compact" key={room.key}>
-              <button className="savedOpenBtn" onClick={() => onOpen(room)}>
-                <strong>{room.name || "未入力"}</strong>
-                <small>{room.savedAt || "日時なし"}</small>
-                <span>詳細を見る</span>
-              </button>
-
-              <div className="savedActions">
-                <button
-                  className="renameSavedBtn"
-                  onClick={() => onRename(room.key, room.name)}
-                >
-                  名称変更
-                </button>
-                <button className="deleteSavedBtn" onClick={() => onDelete(room.key)}>
-                  削除
-                </button>
-              </div>
-            </div>
+            <SavedRoomItem
+              key={room.key}
+              room={room}
+              isOpen={openRoomKey === room.key}
+              onOpenChange={(open) => setOpenRoomKey(open ? room.key : null)}
+              onOpen={onOpen}
+              onDelete={onDelete}
+            />
           ))}
         </div>
 
@@ -1380,7 +1529,7 @@ function UserProfileModal({ profile, required = false, onClose, onSave }) {
     <div className="drawerOverlay">
       <aside className="savedDrawer profileDrawer">
         <div className="drawerHeader">
-          <strong>ユーザー情報</strong>
+          <strong>{required ? "ユーザー情報" : "プロフィール編集"}</strong>
           {!required && <button onClick={onClose} aria-label="閉じる">×</button>}
         </div>
 
@@ -1399,11 +1548,12 @@ function UserProfileModal({ profile, required = false, onClose, onSave }) {
             />
           </label>
           <label>
-            <span>会社名（必須）</span>
+            <span>住所（必須）</span>
             <input
-              value={draft.company}
-              onChange={(e) => change("company", e.target.value)}
-              placeholder="例：山田内装"
+              autoComplete="street-address"
+              value={draft.address}
+              onChange={(e) => change("address", e.target.value)}
+              placeholder="例：東京都新宿区西新宿1-2-3"
             />
           </label>
           <label>
@@ -1425,8 +1575,7 @@ function UserProfileModal({ profile, required = false, onClose, onSave }) {
             />
           </label>
           <p>
-            入力した情報はこの端末内に保存されます。「軽天について質問する」を利用する場合のみ、
-            ユーザーが選択した共有先へ質問内容と一緒に送信されます。
+            入力した情報はこの端末内に保存されます。外部へ送信されることはありません。
           </p>
           <button className="saveBtn" onClick={save}>
             保存
@@ -1455,30 +1604,87 @@ function KeitenQuestionModal({ onClose, onSubmit }) {
 
         <div className="questionForm">
           <p>
-            軽天の納まり、材料、計算内容などを入力してください。送信時にユーザー情報と現在の計算結果を添付できます。
+            軽天に関するすべての質問に実際にお答えします。
+            <br />
+            （24時間以内に回答いたします）
           </p>
           <label>
             <span>質問内容</span>
             <textarea
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="例：この天井寸法の場合、ボードの割付とバーの入れ方はこれで合っていますか？"
+              placeholder="例：店舗工事でアールの天井を組む場合、一番早くて尚且つきれいな施工方法を教えてください"
               rows={8}
             />
           </label>
-          <button className="questionWideBtn" onClick={submit}>
-            質問を共有する
+          <button className="questionWideBtn questionPurchaseBtn" onClick={submit} disabled>
+            <span>質問を送信</span>
+            <strong className="questionButtonPrice">300円</strong>
           </button>
         </div>
+        <AnswerHistory />
       </aside>
     </div>
+  );
+}
+
+function AnswerHistory() {
+  const [history, setHistory] = useState({ status: "loading", entries: [] });
+  const [attempt, setAttempt] = useState(0);
+  const headingId = useId();
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadHistory = async () => {
+      try {
+        const raw = await loadFromNativeStorage(answerHistoryStorageKey);
+        const entries = normalizeAnswerHistory(raw ? JSON.parse(raw) : []);
+        if (!cancelled) setHistory({ status: "ready", entries });
+      } catch (error) {
+        console.warn("Failed to load answer history:", error);
+        if (!cancelled) setHistory({ status: "error", entries: [] });
+      }
+    };
+    loadHistory();
+    return () => { cancelled = true; };
+  }, [attempt]);
+
+  return (
+    <section className="answerHistory" aria-labelledby={headingId} aria-busy={history.status === "loading"}>
+      <h2 id={headingId}>回答履歴</h2>
+      {history.status === "loading" && <p role="status">読み込み中...</p>}
+      {history.status === "error" && (
+        <div className="answerHistoryError">
+          <p role="status">回答履歴を読み込めませんでした。</p>
+          <button type="button" onClick={() => {
+            setHistory({ status: "loading", entries: [] });
+            setAttempt((value) => value + 1);
+          }}>再読み込み</button>
+        </div>
+      )}
+      {history.status === "ready" && (history.entries.length ? (
+        <ol className="answerHistoryList">
+          {history.entries.map((entry, index) => (
+            <li key={`${entry.answeredAt}-${index}`}>
+              <strong>{entry.question}</strong>
+              <time dateTime={entry.answeredAt}>
+                {new Date(entry.answeredAt).toLocaleString("ja-JP", {
+                  year: "numeric", month: "2-digit", day: "2-digit",
+                  hour: "2-digit", minute: "2-digit", hour12: false,
+                })}
+              </time>
+            </li>
+          ))}
+        </ol>
+      ) : <p>回答履歴はまだありません。</p>)}
+    </section>
   );
 }
 
 function SavedRoomDetail({ room, onClose, onRename }) {
   const roomShape = room.shape;
   const roomDims = room.dims || {};
-  const roomResults = finalizeResultList(room.results || []);
+  const roomResults = finalizeResultList(room.results || [], buildPolygonFromDims(roomDims, roomShape));
 
   return (
     <div className="detailOverlay">
@@ -1506,7 +1712,11 @@ function SavedRoomDetail({ room, onClose, onRename }) {
         <section className="resultCard detailResultCard">
           {roomResults.map((item) => (
             <div
-              className={item.category === "board" ? "resultRow boardSectionRow" : "resultRow"}
+              className={[
+                "resultRow",
+                item.category === "board" ? "boardSectionRow" : "",
+                item.category === "area" ? "areaSectionRow" : "",
+              ].filter(Boolean).join(" ")}
               key={`detail-${item.name}`}
             >
               <strong>{item.name}</strong>
@@ -3572,7 +3782,7 @@ function getExpectedResultOverride() {
   return null;
 }
 
-function normalizeResultList(list) {
+function normalizeResultList(list, polygonPoints) {
   const get = (...names) => {
     for (const name of names) {
       const found = list.find((item) => item.name === name);
@@ -3583,6 +3793,9 @@ function normalizeResultList(list) {
   const boardItem = list.find((item) => item.category === "board" || item.name === "ボード");
   const finishBoardItem = list.find((item) => item.category === "finishBoard");
   const screwItem = list.find((item) => item.name === "ビス");
+  const areaItem = polygonPoints !== undefined
+    ? makeAreaResult(polygonPoints)
+    : list.find((item) => item.category === "area");
 
   const hangerValue = String(get("ハンガー")).replace(/本/g, "コ");
 
@@ -3607,11 +3820,12 @@ function normalizeResultList(list) {
       const item = list.find((entry) => entry.name === name);
       return item ? [{ ...item, category: "boardAccessory" }] : [];
     }),
+    ...(areaItem ? [areaItem] : []),
   ];
 }
 
-function finalizeResultList(list) {
-  const normalized = normalizeResultList(list);
+function finalizeResultList(list, polygonPoints) {
+  const normalized = normalizeResultList(list, polygonPoints);
 
   const getValue = (name) => {
     const found = normalized.find((item) => item.name === name);
@@ -3627,6 +3841,11 @@ function finalizeResultList(list) {
   const finishBoardCount = extractFirstNumber(finishBoardItem?.value || "");
 
   return normalized.map((item) => {
+    if (item.category === "board" || item.category === "finishBoard") {
+      const quantity = String(item.value).match(/^(\d+)\s*枚/);
+      return quantity ? { ...item, value: `${quantity[1]} 枚` } : item;
+    }
+
     if (item.name === "ナット") {
       return { ...item, value: `${boltCount * 2} コ` };
     }
@@ -3701,6 +3920,15 @@ function normalizeDigits(value) {
 }
 
 
+function makeAreaResult(points) {
+  const squareMeters = points ? Math.abs(signedArea(closePolygon(points))) / 2 / 1_000_000 : NaN;
+  // 1 tsubo = 400/121 square meters. Use the room polygon, not purchased sheets.
+  const value = Number.isFinite(squareMeters) && squareMeters > 0
+    ? `${(squareMeters * 121 / 400).toFixed(2)} 坪　${squareMeters.toFixed(2)} ㎡`
+    : "寸法未入力";
+  return { name: "面積", value, category: "area" };
+}
+
 function makeResults(dims, settings, shape) {
   const polygonPoints = buildPolygonFromDims(dims, shape);
   const plan = polygonPoints
@@ -3738,7 +3966,7 @@ function makeResults(dims, settings, shape) {
     { name: "ハンガー", value: "0 コ" },
     { name: "Wクリップ", value: "0 コ" },
     { name: "Sクリップ", value: "0 コ" },
-  ]);
+  ], polygonPoints);
 }
 
 function getBoardSizeOption(settingsOrKey, layer = "board") {
@@ -3776,7 +4004,7 @@ function getBoardResultName(settings = {}, board = getBoardSizeOption(settings))
     return "1.5×3ジプトーン";
   }
 
-  return settings.barType || board.name || "ボード";
+  return settings.barType ? getBarTypeName(settings) : board.name || "ボード";
 }
 
 function makeBoardResult(points, settings = {}, barAxis = "H", layer = "board") {
@@ -3787,7 +4015,7 @@ function makeBoardResult(points, settings = {}, barAxis = "H", layer = "board") 
   const layout = makeBoardLayout(points, barAxis, settings, layer);
   const count = layout.newBoardCount || Math.ceil(areaMm2 / (board.width * board.height));
 
-  return `${count} 枚（${formatSheetBundle(count, board.sheetsPerTsubo)}）`;
+  return `${count} 枚`;
 }
 
 function makeBoardLayout(points, barAxis = "H", settings = {}, layer = "board") {

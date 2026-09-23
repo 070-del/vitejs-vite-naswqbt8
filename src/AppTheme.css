@@ -1,0 +1,177 @@
+/* Selected preview styles; diagram and dimension-field layouts stay unchanged. */
+:root {
+  --work-ink: #222826;
+  --work-muted: #69716e;
+  --work-line: #dce2df;
+  --work-accent: #176653;
+  --work-soft: #edf5f1;
+  --ink: var(--work-ink);
+  --muted: var(--work-muted);
+  --line: var(--work-line);
+  --paper: #f3f5f4;
+  --panel: #fff;
+  --photo-ink: var(--work-ink);
+  --photo-line: var(--work-line);
+  --photo-paper: #fff;
+  --photo-card: #fff;
+  --photo-soft: #f3f5f4;
+}
+
+html, body, #root { background: #f3f5f4; }
+.selectedDesign { background: #fff; color: var(--work-ink); }
+.selectedDesign, .selectedDesign * { letter-spacing: 0; }
+.selectedDesign button { -webkit-tap-highlight-color: transparent; }
+.selectedDesign button svg { flex-shrink: 0; }
+.selectedDesign button:focus-visible, .selectedDesign input:focus-visible,
+.selectedDesign textarea:focus-visible { outline: 3px solid #79b8a5 !important; outline-offset: 3px; }
+.selectedDesign .header { background: #fff; box-shadow: none; border-color: var(--work-line); backdrop-filter: none; }
+.selectedDesign .homeHeader {
+  display: flex; justify-content: space-between;
+  padding-left: max(16px, calc((100% - 680px) / 2));
+  padding-right: max(16px, calc((100% - 680px) / 2));
+}
+.selectedDesign .appBrand { display: flex; align-items: center; gap: 9px; }
+.selectedDesign .appBrand img { object-fit: contain; border-radius: 7px; }
+.selectedDesign .homeHeader h1 { font-size: 18px; font-weight: 750; }
+.selectedDesign .header h1 { color: var(--work-ink); }
+.selectedDesign .iconButton {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--work-ink); box-shadow: none;
+}
+.selectedDesign .primary, .selectedDesign .bottomOk, .selectedDesign .saveBtn,
+.selectedDesign .nativeModalBtnPrimary { background: var(--work-ink) !important; color: #fff !important; border-color: var(--work-ink); }
+.selectedDesign .questionWideBtn { background: var(--work-ink); }
+.selectedDesign .savedDrawer, .selectedDesign .savedDetailCard { background: #fff !important; }
+.selectedDesign .drawerOverlay, .selectedDesign .savedDetailOverlay { background: #1e302854 !important; }
+.selectedDesign .privacyLink { color: var(--work-accent); }
+.selectedDesign .resultSideControls button[aria-pressed="true"],
+.selectedDesign .boardPatternToggle button[aria-pressed="true"] { background: var(--work-accent) !important; border-color: var(--work-accent) !important; }
+.selectedDesign .barPitchOption.active { background: var(--work-accent) !important; }
+.selectedDesign .dimRow input, .selectedDesign .settingRow input { background: #fff !important; border-color: var(--work-line) !important; }
+.selectedDesign .shapeWrap { background: #fff; }
+
+/* Home: all preview controls, without the 40px workflow navigation. */
+.selectedDesign .homePage {
+  max-width: 680px;
+  height: calc(100svh - 56px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  min-height: 352px; padding: 8px 16px 0; display: grid;
+  grid-template-rows: 36px minmax(120px, 1fr) 72px 48px 44px; gap: 8px;
+}
+.selectedDesign .homePage .topButtons { margin: 0; justify-content: space-between; align-items: center; gap: 4px; }
+.selectedDesign .homePage.calculationOnly {
+  min-height: 308px; padding-bottom: 8px;
+  grid-template-rows: 36px minmax(120px, 1fr) 72px 48px;
+}
+.selectedDesign .topButtons h2 { font-size: 15px; font-weight: 700; margin: 0; line-height: 1.4; }
+.selectedDesign .homePage .canvasBox {
+  width: 100%; height: 100%; min-height: 0; border-radius: 8px !important;
+  border: 1px solid var(--work-line) !important; box-shadow: none !important;
+  background-color: #fcfdfc !important;
+  background-image: linear-gradient(#e9eeeb 1px, transparent 1px), linear-gradient(90deg, #e9eeeb 1px, transparent 1px) !important;
+  background-size: 24px 24px !important;
+}
+.selectedDesign .canvasBox canvas { width: 100% !important; height: 100% !important; }
+.selectedDesign .homeContinue {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  min-height: 48px; padding: 10px 40px; border-radius: 7px !important;
+  font-size: 15px; font-weight: 700; margin: 0; box-shadow: none;
+}
+.selectedDesign .homeContinue svg { position: absolute; right: 18px; }
+.selectedDesign .homeContinue:hover, .selectedDesign .bottomOk:hover,
+.selectedDesign .saveCard .saveBtn:hover { background: #36453e !important; }
+.selectedDesign .homePage .settingCard { padding: 0 !important; border-radius: 0 !important; }
+.selectedDesign .barPitchBox { position: relative; height: 72px; }
+.selectedDesign .barPitchMain {
+  height: 72px; min-height: 72px !important; border-radius: 0 !important;
+  display: grid; grid-template-columns: 24px minmax(0, 1fr) auto 18px !important;
+  gap: 10px; padding: 6px 0 !important; background: #fff !important;
+}
+.selectedDesign .pitchIcon { color: var(--work-accent); }
+.selectedDesign .barPitchMain .pitchBoard, .selectedDesign .barPitchMain .pitchNumbers { display: grid; gap: 5px; }
+.selectedDesign .barPitchMain .pitchBoard strong { font-size: 15px !important; color: var(--work-ink); }
+.selectedDesign .barPitchMain small { font-size: 11px !important; font-weight: 500; color: var(--work-muted); }
+.selectedDesign .barPitchMain .pitchNumbers { text-align: right; font-size: 14px !important; color: var(--work-ink); }
+.selectedDesign .pitchChevron { color: var(--work-muted); }
+.selectedDesign .pitchChevron.expanded { transform: rotate(180deg); }
+.selectedDesign .barPitchOptions {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 20;
+  border: 1px solid var(--work-line) !important; border-radius: 8px;
+  background: #fff; padding: 6px; gap: 2px; box-shadow: 0 8px 24px #162b2426 !important;
+}
+.selectedDesign .barPitchOption { min-height: 52px; border-radius: 5px; padding: 7px 10px; font-size: 14px; }
+.selectedDesign .barPitchOption strong { font-size: 16px; }
+.selectedDesign .barPitchOption strong small { display: block; font-size: 10px; font-weight: 500; opacity: 0.8; }
+.selectedDesign .homePage .questionWideBtn {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  height: 44px; margin: 0; padding: 0 12px; background: #fff; color: var(--work-muted);
+  border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 600;
+}
+.selectedDesign .homePage .questionWideBtn:hover { background: var(--work-soft); color: var(--work-accent); }
+
+/* Adopt the preview navigation on the dimension and result pages. */
+.selectedDesign .pageNavButtons {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px;
+  border: 0; padding: 0; background: #fff; backdrop-filter: none;
+}
+.selectedDesign .pageNavButtons button, .selectedDesign .saveCard button {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; border-radius: 7px !important; font-size: 15px;
+  font-weight: 700; padding: 10px 14px; margin: 0; box-shadow: none;
+}
+.selectedDesign .pageNavButtons .backBtn, .selectedDesign .saveCard .shareBtn {
+  color: var(--work-ink) !important; background: #fff !important; border: 1px solid var(--work-line) !important;
+}
+
+/* Materials, area, and save/share section; the diagram above is not redesigned. */
+.selectedDesign .resultPage { padding-bottom: 24px !important; }
+.selectedDesign .resultCard { padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: #fff !important; box-shadow: none !important; }
+.selectedDesign .resultRow { grid-template-columns: 100px minmax(0, 1fr); padding: 13px 0; gap: 8px; font-size: 16px; align-items: center; border-color: #e8ece9 !important; }
+.selectedDesign .resultRow strong { font-size: 14px; font-weight: 600; color: var(--work-ink); white-space: normal; }
+.selectedDesign .resultPart { border: 0 !important; background: transparent !important; border-radius: 0 !important; padding: 0; color: var(--work-ink) !important; font-weight: 700; font-variant-numeric: tabular-nums; }
+.selectedDesign .resultValue { gap: 3px 12px; }
+.selectedDesign .boardSectionRow, .selectedDesign .areaSectionRow { margin-top: 8px; padding-top: 22px !important; }
+.selectedDesign .boardSectionRow::before, .selectedDesign .areaSectionRow::before { top: 0; background: #b7c4bd; height: 2px; }
+.selectedDesign .resultRow:has(+ .boardSectionRow), .selectedDesign .resultRow:has(+ .areaSectionRow) { border-bottom: 0 !important; }
+.selectedDesign .areaSectionRow .resultPart { font-size: 18px; color: var(--work-accent) !important; }
+.selectedDesign .resultRow:last-child { border-bottom: 0 !important; }
+.selectedDesign .screwSpecToggle { border-radius: 5px; gap: 0; padding: 0; }
+.selectedDesign .screwSpecToggle button { min-height: 36px; padding: 4px 7px; border-radius: 4px; font-size: 11px; }
+.selectedDesign .screwSpecToggle button.active { background: var(--work-accent); }
+.selectedDesign .saveCard {
+  margin-top: 20px; padding: 20px 0 0 !important; grid-template-columns: 1fr 1fr;
+  border: 0 !important; border-top: 1px solid var(--work-line) !important;
+  border-radius: 0 !important; background: #fff !important; box-shadow: none !important;
+}
+.selectedDesign .saveCard label, .selectedDesign .saveCard input { grid-column: 1 / -1; }
+.selectedDesign .saveCard label { font-size: 14px; color: var(--work-ink); }
+.selectedDesign .saveCard input {
+  border-radius: 6px !important; border: 1px solid var(--work-line) !important; background: #fff !important;
+  font-size: 16px !important; font-weight: 600; color: var(--work-ink); box-shadow: none;
+}
+
+.answerHistory {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--work-line);
+}
+.answerHistory h2 { margin: 0 0 14px; font-size: 15px; font-weight: 700; color: var(--work-ink); }
+.answerHistory p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--work-muted); }
+.answerHistoryList { margin: 0; padding: 0; list-style: none; }
+.answerHistoryList li { display: grid; gap: 7px; padding: 14px 0; border-bottom: 1px solid var(--work-line); }
+.answerHistoryList li:first-child { padding-top: 0; }
+.answerHistoryList strong { min-width: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; line-height: 1.6; }
+.answerHistoryList time { text-align: right; color: var(--work-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.answerHistoryError { display: grid; justify-items: start; gap: 10px; }
+.answerHistoryError button {
+  min-height: 44px; padding: 8px 12px; border: 1px solid var(--work-line); border-radius: 6px;
+  background: #fff; color: var(--work-accent); font-size: 13px; font-weight: 600;
+}
+
+@media (max-width: 359px) {
+  .selectedDesign .homePage { padding-left: 12px; padding-right: 12px; }
+  .selectedDesign .barPitchMain { gap: 6px; grid-template-columns: minmax(0, 1fr) auto 18px !important; }
+  .selectedDesign .pitchIcon { display: none; }
+  .selectedDesign .resultRow { grid-template-columns: 82px minmax(0, 1fr); font-size: 14px; }
+  .selectedDesign .pageNavButtons button, .selectedDesign .saveCard button { padding-left: 8px; padding-right: 8px; }
+}
