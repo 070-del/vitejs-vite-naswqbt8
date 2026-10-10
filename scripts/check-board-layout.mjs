@@ -61,7 +61,7 @@ for (const axis of ['H', 'V']) {
     assert.deepEqual(api.getResultBarDimensionTexts(dims,shape,{...cross,verticalCenterBarType:'double'}), api.getResultBarDimensionTexts(dims,shape,{...cross,verticalCenterBarType:'single'}));
   }
 }
-assert.deepEqual(Array.from(api.getVerticalResultBarDimensionTexts(dims, shape, {...settings, verticalCenterBarType:'single'})), ['縦端部→中心 3000mm','縦端部→2本目W 497.5mm / 42.5mm']);
+assert.deepEqual(Array.from(api.getVerticalResultBarDimensionTexts(dims, shape, {...settings, verticalCenterBarType:'single'})), ['縦端部→中心 2772.5mm','縦端部→2本目W 497.5mm / 42.5mm']);
 const squareSettings = {barPitch:303,barW:910,barType:'3×3ジプトーン',centerBarType:'double'};
 const squareRoom = [{x:0,y:0},{x:1820,y:0},{x:1820,y:1820},{x:0,y:1820},{x:0,y:0}];
 assert.equal(api.makeBoardResult(squareRoom,settings,'H'),'8 枚','Board quantities must not include bundled tsubo');
@@ -92,8 +92,24 @@ for (const axis of ['H','V']) {
     }
   }
 }
-assert.deepEqual(Array.from(api.getVerticalResultBarDimensionTexts(dims,shape,{...squareSettings,verticalCenterBarType:'single'})),['縦端部→中心 3000mm','縦端部→2本目W 725mm']);
-console.log('PASS: full coverage, sheet capacity, numbering/count, independent horizontal/vertical modes in both axes, G/2 and terminal dimensions.');
+assert.deepEqual(Array.from(api.getVerticalResultBarDimensionTexts(dims,shape,{...squareSettings,verticalCenterBarType:'single'})),['縦端部→中心 2545mm','縦端部→2本目W 725mm']);
+for (const [width, height] of [[3000,4000], [4000,3000]]) {
+  const room = [{x:0,y:0},{x:width,y:0},{x:width,y:height},{x:0,y:height}];
+  const roomShape = api.makeShape(room);
+  const roomDims = {A:width,B:height,C:width,D:height};
+  for (const centerBarType of ['double','single']) {
+    const split = {...settings,centerBarType,verticalCenterBarType:'double'};
+    const straddle = {...split,verticalCenterBarType:'single'};
+    const splitTexts = api.getVerticalResultBarDimensionTexts(roomDims,roomShape,split);
+    const straddleTexts = api.getVerticalResultBarDimensionTexts(roomDims,roomShape,straddle);
+    assert.equal(splitTexts[0],'縦端部→中心 2000mm');
+    assert.equal(straddleTexts[0],'縦端部→中心 1772.5mm');
+    assert.equal(splitTexts[1],'縦端部→2本目W 635mm / 180mm');
+    assert.equal(straddleTexts[1],'縦端部→2本目W 862.5mm / 407.5mm');
+    assert.deepEqual(api.getResultBarDimensionTexts(roomDims,roomShape,split),api.getResultBarDimensionTexts(roomDims,roomShape,straddle));
+  }
+}
+console.log('PASS: full coverage, sheet capacity, numbering/count, independent modes, axis-aware center and terminal dimensions.');
 
 const rockSettings = {barPitch:364,barW:1820,barType:'岩綿'};
 const tsuboRoom = [{x:0,y:0},{x:1800,y:0},{x:1800,y:1800},{x:0,y:1800},{x:0,y:0}];
@@ -247,8 +263,8 @@ assert.equal(offCenter.y,50);
 const pan=api.getDiagramGestureView(pinch,[{x:150,y:100}],[{x:180,y:120}],300,200);
 assert.equal(pan.x,30);
 assert.equal(pan.y,20);
-const bounded=api.constrainDiagramView({scale:10,x:2000,y:-2000},300,200);
-assert.equal(bounded.scale,4); assert.equal(bounded.x,450); assert.equal(bounded.y,-300);
+const bounded=api.constrainDiagramView({scale:30,x:4000,y:-4000},300,200);
+assert.equal(bounded.scale,16); assert.equal(bounded.x,2250); assert.equal(bounded.y,-1500);
 const reset=api.constrainDiagramView({scale:0.5,x:200,y:300},300,200);
 assert.equal(reset.scale,1); assert.ok(reset.x===0 && reset.y===0);
 console.log('PASS: diagram-only pinch scaling, focal point, panning, zoom limits, and reset.');

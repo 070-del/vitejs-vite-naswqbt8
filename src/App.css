@@ -284,8 +284,8 @@ button {
 }
 
 .diagramZoomViewport:active { cursor: grabbing; }
-.diagramZoomContent { transform-origin: center; }
-.diagramZoomContent > .shapeWrap.small { max-width: 440px; margin: 0; }
+.diagramZoomContent > .shapeWrap.small { max-width: 440px; margin: 0; padding: 0; }
+.diagramZoomContent svg { display: block; width: 100%; height: auto; }
 .diagramZoomTools { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
 .diagramZoomTools button {
   min-width: 38px;

@@ -13,10 +13,10 @@
 // 端部バーは全設定で必ずダブルバー。
 // 結果ページ右側の寸法表示と芯割り/芯跨ぎボタンは上下に分けて固定表示する。
 // V24_CHANNEL_UNIFIED_SINGLE_SOURCE
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import "./App.css";
 import "./AppTheme.css";
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Eraser, Home, Menu, MessageCircle, Ruler, Save, Share2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Eraser, Home, Menu, MessageCircle, Minus, Plus, Ruler, Save, Share2 } from "lucide-react";
 import {
   tapHaptic,
   successHaptic,
@@ -462,13 +462,11 @@ export default function App() {
   };
 
   const changeDim = (key, value) => {
-    // 入力中は、その欄だけを更新する。
-    // 他の辺の自動計算は onBlur または OK の時だけ行うので、
-    // 「1 → 16 → 160 → 1600」の途中で別の数字が一瞬バグらない。
-    setDims((prev) => ({
-      ...prev,
-      [key]: onlyNumber(value),
-    }));
+    setDims((prev) => {
+      const next = { ...prev, [key]: onlyNumber(value) };
+      syncOppositeDim(next, shape.edges, key);
+      return next;
+    });
   };
 
   const runAutoFill = () => {
@@ -487,6 +485,12 @@ export default function App() {
     const missingKeys = getMissingDimKeys(fixed, shape.edges);
     if (missingKeys.length) {
       showAlert(`未入力の寸法があります：${missingKeys.join("、")}`);
+      return;
+    }
+
+    const dimensionError = getDimensionError(fixed, shape.edges);
+    if (dimensionError) {
+      showAlert(dimensionError);
       return;
     }
 
@@ -755,7 +759,9 @@ export default function App() {
             }}
           >
             <ZoomableDiagram key={`${activeDiagramPage}-${shape.type}`}>
+            {(diagramView) => (
             <CleanShape
+              diagramView={diagramView}
               shape={shape}
               small
               dims={dims}
@@ -768,6 +774,7 @@ export default function App() {
               boardLayer={boardLayer}
               showBarDimensionLabels={false}
             />
+            )}
             </ZoomableDiagram>
 
             {showCenterControls && (
@@ -1268,11 +1275,12 @@ function getVerticalResultBarDimensionTexts(dims, shape, settings, layer = "boar
   const points = buildPolygonFromDims(dims, shape);
   if (!points) return [];
   const box = getBox(points);
-  const gLength = Number(dims.G) || box.maxX - box.minX;
   const plan = makeBarPlan(points, settings);
   const layout = makeBoardLayout(points, plan.barAxis, settings, layer);
   const vertical = plan.barAxis === "V";
+  const start = vertical ? box.minY : box.minX;
   const end = vertical ? box.maxY : box.maxX;
+  const edgeToCenter = (end - start) / 2 - getVerticalBoardStraddleOffset(settings, layer);
   const endSizes = [...new Set(layout.tiles.filter((tile) => {
     const used = tile.usedRect;
     return Math.abs((vertical ? used.y + used.height : used.x + used.width) - end) < 0.01;
@@ -1280,7 +1288,7 @@ function getVerticalResultBarDimensionTexts(dims, shape, settings, layer = "boar
   // 岩綿は端部に並ぶ段の順を保ち、レンガ貼りの端材寸法を図形と対応させる。
   if (layer !== "rockWool") endSizes.sort((a, b) => Number(b) - Number(a));
   return [
-    `縦端部→中心 ${formatMmLabel(gLength / 2 - (layer === "rockWool" && isRockWoolSetting(settings) && settings.verticalCenterBarType === "single" ? 150 : 0))}mm`,
+    `縦端部→中心 ${formatMmLabel(edgeToCenter)}mm`,
     `縦端部→2本目W ${endSizes.map((size) => `${size}mm`).join(" / ")}`,
   ];
 }
@@ -1741,6 +1749,45 @@ function getMissingDimKeys(dims, edges) {
     .map((edge) => edge.key);
 }
 
+function getDimensionError(dims, edges) {
+  const invalid = edges.filter((edge) => !Number.isSafeInteger(Number(dims[edge.key])) || Number(dims[edge.key]) <= 0);
+  if (invalid.length) {
+    return `${invalid.map((edge) => edge.key).join("、")}辺に有効な寸法を入力してください。`;
+  }
+
+  const mismatches = [];
+  for (const axis of ["H", "V"]) {
+    const positive = edges.filter((edge) => edge.axis === axis && edge.sign === 1);
+    const negative = edges.filter((edge) => edge.axis === axis && edge.sign === -1);
+    const total = (group) => group.reduce((sum, edge) => sum + Number(dims[edge.key]), 0);
+    if (total(positive) !== total(negative)) {
+      const describe = (group) => `${group.map((edge) => edge.key).join("＋")}：${total(group).toLocaleString("ja-JP")}mm`;
+      mismatches.push(`${describe(positive)} ／ ${describe(negative)}`);
+    }
+  }
+  if (mismatches.length) return `斜めの辺は表示できません（${mismatches.join("、")}）`;
+
+  // Check the entered edges before any rendering code repairs polygon closure.
+  const points = [{ x: 0, y: 0 }];
+  for (const edge of edges) {
+    const point = { ...points[points.length - 1] };
+    point[edge.axis === "H" ? "x" : "y"] += edge.sign * Number(dims[edge.key]);
+    points.push(point);
+  }
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const [a, b, c, d] = [points[i], points[i + 1], points[j], points[j + 1]];
+      const overlapX = Math.min(Math.max(a.x, b.x), Math.max(c.x, d.x)) - Math.max(Math.min(a.x, b.x), Math.min(c.x, d.x));
+      const overlapY = Math.min(Math.max(a.y, b.y), Math.max(c.y, d.y)) - Math.max(Math.min(a.y, b.y), Math.min(c.y, d.y));
+      const adjacent = j === i + 1 || (i === 0 && j === edges.length - 1);
+      if (overlapX >= 0 && overlapY >= 0 && (!adjacent || overlapX > 0 || overlapY > 0)) {
+        return `${edges[i].key}辺と${edges[j].key}辺が交差、または重なっています。寸法を修正してください。`;
+      }
+    }
+  }
+  return "";
+}
+
 function splitResultValue(value) {
   return String(value)
     .split(/　|\s{2,}/)
@@ -1749,7 +1796,7 @@ function splitResultValue(value) {
 }
 
 function constrainDiagramView(view, width, height) {
-  const scale = Math.max(1, Math.min(4, view.scale));
+  const scale = Math.max(1, Math.min(16, view.scale));
   const limitX = width * (scale - 1) / 2;
   const limitY = height * (scale - 1) / 2;
   return { scale, x: Math.max(-limitX, Math.min(limitX, view.x)), y: Math.max(-limitY, Math.min(limitY, view.y)) };
@@ -1761,7 +1808,7 @@ function getDiagramGestureView(base, start, current, width, height) {
   const to = center(current);
   const distance = (points) => Math.hypot(points[1].x-points[0].x, points[1].y-points[0].y);
   const ratio = start.length === 2 ? distance(current) / Math.max(1, distance(start)) : 1;
-  const scale = Math.max(1, Math.min(4, base.scale * ratio));
+  const scale = Math.max(1, Math.min(16, base.scale * ratio));
   const factor = scale / base.scale;
   return constrainDiagramView({
     scale,
@@ -1775,6 +1822,21 @@ function ZoomableDiagram({ children }) {
   const [view, setView] = useState(initial);
   const viewRef = useRef(initial);
   const viewport = useRef(null);
+  const [viewportWidth, setViewportWidth] = useState(280);
+  useEffect(() => {
+    const element = viewport.current;
+    const resize = () => {
+      const { width, height } = element.getBoundingClientRect();
+      setViewportWidth(width || 280);
+      const next = constrainDiagramView(viewRef.current, width, height);
+      viewRef.current = next;
+      setView(next);
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const pointers = useRef(new Map());
   const gesture = useRef(null);
   const didDrag = useRef(false);
@@ -1826,15 +1888,25 @@ function ZoomableDiagram({ children }) {
           if (Date.now() < suppressClickUntil.current) { e.stopPropagation(); e.preventDefault(); }
         }}
       >
-        <div className="diagramZoomContent" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>{children}</div>
+        <div className="diagramZoomContent">{children({ ...view, viewportWidth })}</div>
       </div>
       <div className="diagramZoomTools" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-        <button type="button" aria-label="図形を縮小" disabled={view.scale <= 1} onClick={() => zoom(view.scale-0.5)}>−</button>
-        <button type="button" aria-label="図形の拡大をリセット" onClick={() => update(initial)}>{Math.round(view.scale*100)}%</button>
-        <button type="button" aria-label="図形を拡大" disabled={view.scale >= 4} onClick={() => zoom(view.scale+0.5)}>＋</button>
+        <button type="button" aria-label="図形を縮小" title="図形を縮小" disabled={view.scale <= 1} onClick={() => zoom(view.scale / 1.5)}><Minus size={16} /></button>
+        <button type="button" aria-label="図形の拡大をリセット" title="全体表示に戻す" onClick={() => update(initial)}>{Math.round(view.scale*100)}%</button>
+        <button type="button" aria-label="図形を拡大" title="図形を拡大" disabled={view.scale >= 16} onClick={() => zoom(view.scale * 1.5)}><Plus size={16} /></button>
       </div>
     </div>
   );
+}
+
+function getBoardLabelFontSize(tile, zoomScale, small) {
+  const size = Math.min(
+    (small ? 8.4 : 10.2) / Math.sqrt(zoomScale),
+    tile.usedRect.width / (String(tile.boardNo).length * 0.65 + 0.5),
+    tile.usedRect.height * 0.6
+  );
+  // Fit every number, including three-digit numbers and narrow offcuts.
+  return Math.max(0, size);
 }
 
 function CleanShape({
@@ -1849,14 +1921,23 @@ function CleanShape({
   showBoardLayout = false,
   boardLayer = "board",
   showBarDimensionLabels = true,
+  diagramView = null,
 }) {
   const boardClipId = `board-clip-${useId().replace(/:/g, "")}`;
-  const realClosedPoints = showValues ? buildPolygonFromDims(dims, shape) : null;
-  const basePoints = realClosedPoints
+  const realClosedPoints = useMemo(() => showValues ? buildPolygonFromDims(dims, shape) : null, [showValues, dims, shape]);
+  const basePoints = useMemo(() => realClosedPoints
     ? realClosedPoints.slice(0, -1)
-    : shape.points;
+    : shape.points, [realClosedPoints, shape.points]);
 
-  const layout = normalizeLayout(basePoints);
+  const layout = useMemo(() => normalizeLayout(basePoints), [basePoints]);
+  const zoomScale = diagramView?.scale || 1;
+  const pixelRatio = (diagramView?.viewportWidth || 280) / 280;
+  const viewBox = diagramView
+    ? `${140 - 140 / zoomScale - diagramView.x / pixelRatio / zoomScale} ${110 - 110 / zoomScale - diagramView.y / pixelRatio / zoomScale} ${280 / zoomScale} ${220 / zoomScale}`
+    : "0 0 280 220";
+  const mappedOrigin = layout.mapPoint({ x: 0, y: 0 });
+  const mappedPitch = layout.mapPoint({ x: settings.barPitch || 303, y: 0 });
+  const boltRadius = Math.min(small ? 3.2 : 4.6, Math.abs(mappedPitch.x - mappedOrigin.x) * 0.22, 2 / zoomScale);
   const pointsText = layout.points.map((p) => `${p.x},${p.y}`).join(" ");
   const polygonForLabels = closePolygon(layout.points);
 
@@ -1877,17 +1958,17 @@ function CleanShape({
 
   // V36: 青線・ボルト・結果は同じ計算データを使う。
   // ここで作った unifiedPlan を、描画と結果表示の両方の元データにする。
-  const unifiedPlan = realClosedPoints
+  const unifiedPlan = useMemo(() => realClosedPoints
     ? makeCeilingChannelPlan(realClosedPoints, dims, shape, 910, 100)
-    : { channelLines: [], boltDots: [] };
+    : { channelLines: [], boltDots: [] }, [realClosedPoints, dims, shape]);
 
-  const barPlan = realClosedPoints
+  const barPlan = useMemo(() => realClosedPoints
     ? makeBarPlan(realClosedPoints, settings)
-    : { doubleLines: [], singleLines: [], dimensionLabels: [] };
+    : { doubleLines: [], singleLines: [], dimensionLabels: [] }, [realClosedPoints, settings]);
 
-  const boardLayout = showBoardLayout && realClosedPoints
+  const boardLayout = useMemo(() => showBoardLayout && realClosedPoints
     ? makeBoardLayout(realClosedPoints, barPlan.barAxis, settings, boardLayer)
-    : { tiles: [] };
+    : { tiles: [] }, [showBoardLayout, realClosedPoints, barPlan.barAxis, settings, boardLayer]);
 
   const boardTiles = showBoardLayout && realClosedPoints
     ? boardLayout.tiles.map((tile) => {
@@ -1946,7 +2027,7 @@ function CleanShape({
 
   return (
     <div className={`shapeWrap ${small ? "small" : "big"}`}>
-      <svg viewBox="0 0 280 220" style={{ overflow: "visible" }}>
+      <svg viewBox={viewBox} style={{ overflow: diagramView ? "hidden" : "visible", aspectRatio: "280 / 220" }}>
         {showBoardLayout && (
           <defs>
             <clipPath id={boardClipId}>
@@ -1971,7 +2052,8 @@ function CleanShape({
                 height={tile.height}
                 fill={tile.fromStock ? "#dcfce7" : index % 2 ? "#dbeafe" : "#fef3c7"}
                 stroke={tile.fromStock ? "#16a34a" : "#0f766e"}
-                strokeWidth={small ? 0.7 : 1.1}
+                strokeWidth={0.7}
+                vectorEffect="non-scaling-stroke"
                 opacity="0.82"
               />
             ))}
@@ -1982,7 +2064,8 @@ function CleanShape({
           points={pointsText}
           fill="none"
           stroke="#111"
-          strokeWidth="5"
+          strokeWidth={showValues ? 2 : 5}
+          vectorEffect="non-scaling-stroke"
           strokeLinejoin="round"
         />
 
@@ -1992,17 +2075,13 @@ function CleanShape({
             if (!labelPoint) return null;
             const labelX = labelPoint.x;
             const labelY = labelPoint.y;
-            const labelFontSize = boardLayer === "rockWool"
-              ? Math.max(1.4, Math.min(
-                  small ? 7 : 8.5,
-                  tile.usedRect.width / (String(tile.boardNo).length * 0.65 + 0.5),
-                  tile.usedRect.height * 0.65
-                ))
-              : small ? 8.4 : 10.2;
+            const labelFontSize = getBoardLabelFontSize(tile, zoomScale, small);
+            if (!labelFontSize) return null;
 
             return (
               <g key={`board-label-${index}`}>
                 <text
+                  data-board-number={tile.boardNo}
                   x={labelX}
                   y={labelY}
                   textAnchor="middle"
@@ -2013,7 +2092,7 @@ function CleanShape({
                     fill: "#0f172a",
                     paintOrder: "stroke",
                     stroke: "#fff",
-                    strokeWidth: boardLayer === "rockWool" ? labelFontSize * 0.18 : small ? 1.8 : 2.2,
+                    strokeWidth: labelFontSize * 0.18,
                   }}
                 >
                   {tile.boardNo}
@@ -2030,7 +2109,8 @@ function CleanShape({
             x2={line.b.x}
             y2={line.b.y}
             stroke="#2563eb"
-            strokeWidth={small ? 1.7 : 2.6}
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
             strokeLinecap="round"
             opacity="0.78"
           />
@@ -2044,7 +2124,8 @@ function CleanShape({
             x2={line.b.x}
             y2={line.b.y}
             stroke="#dc2626"
-            strokeWidth={small ? 2.1 : 3.0}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
             strokeLinecap="round"
             opacity="0.88"
           />
@@ -2058,7 +2139,8 @@ function CleanShape({
             x2={line.b.x}
             y2={line.b.y}
             stroke="#facc15"
-            strokeWidth={small ? 2.4 : 3.4}
+            strokeWidth={1.8}
+            vectorEffect="non-scaling-stroke"
             strokeLinecap="round"
             opacity="0.96"
           />
@@ -2069,7 +2151,7 @@ function CleanShape({
             key={`bolt-${index}`}
             cx={p.x}
             cy={p.y}
-            r={small ? 3.2 : 4.6}
+            r={boltRadius}
             fill="#111"
           />
         ))}
@@ -2106,11 +2188,11 @@ function CleanShape({
               textAnchor="middle"
               dominantBaseline="middle"
               style={{
-                fontSize: showValues ? 4.6 : 10.2,
+                fontSize: showValues ? 4.6 / Math.sqrt(zoomScale) : 10.2,
                 fontWeight: 900,
                 paintOrder: "stroke",
                 stroke: "white",
-                strokeWidth: showValues ? 1.05 : 3.0,
+                strokeWidth: showValues ? 1.05 / Math.sqrt(zoomScale) : 3.0,
                 fill: "#111827",
                 letterSpacing: 0,
               }}
@@ -2739,6 +2821,21 @@ function rotateFromTopLeft(points) {
   }
 
   return points.slice(best).concat(points.slice(0, best));
+}
+
+function syncOppositeDim(next, edges, changedKey) {
+  const changed = edges.find((edge) => edge.key === changedKey);
+  if (!changed) return;
+  const parallel = edges.filter((edge) => edge.axis === changed.axis);
+  const opposite = parallel.filter((edge) => edge.sign === -changed.sign);
+  // Only adjust a uniquely determined opposite side; do not choose between notches.
+  if (opposite.length !== 1) return;
+  const target = opposite[0];
+  const known = parallel.filter((edge) => edge.key !== target.key);
+  if (known.some((edge) => !Number.isSafeInteger(Number(next[edge.key])) || Number(next[edge.key]) <= 0)) return;
+  const total = known.reduce((sum, edge) => sum + edge.sign * Number(next[edge.key]), 0);
+  const length = -total / target.sign;
+  if (Number.isSafeInteger(length) && length > 0) next[target.key] = String(length);
 }
 
 function autoFillDims(next, edges) {
@@ -4191,6 +4288,14 @@ function getBrickBoardOffset(barAxis = "H", board = boardSize, settings = {}) {
   };
 }
 
+function getVerticalBoardStraddleOffset(settings, layer = "board") {
+  if (settings.verticalCenterBarType !== "single") return 0;
+  // Keep the displayed center distance and the board-joint anchor in sync.
+  if (layer === "rockWool" && isRockWoolSetting(settings)) return 150;
+  return getBoardSizeOption(settings).key === "910x910" && settings.squareBoardPattern !== "brick"
+    ? 455 : 227.5;
+}
+
 function getBoardGridStart(box, barAxis = "H", tileSize = boardSize, points = [], settings = {}, layer = "board") {
   const crossMin = barAxis === "V" ? box.minX : box.minY;
   const crossMax = barAxis === "V" ? box.maxX : box.maxY;
@@ -4204,13 +4309,7 @@ function getBoardGridStart(box, barAxis = "H", tileSize = boardSize, points = []
   const alongMax = barAxis === "V" ? box.maxY : box.maxX;
   const alongStep = barAxis === "V" ? tileSize.height : tileSize.width;
   const alongCenter = (alongMin + alongMax) / 2;
-  // 岩綿の縦芯跨ぎは中心−150mmに目地。3×3の芋貼りは455mm、それ以外は227.5mm。
-  const verticalStraddleOffset = layer === "rockWool" && isRockWoolSetting(settings) ? 150
-    : getBoardSizeOption(settings).key === "910x910" &&
-      settings.squareBoardPattern !== "brick" ? 455 : 227.5;
-  const alongAnchor = settings.verticalCenterBarType === "single"
-    ? alongCenter - verticalStraddleOffset
-    : alongCenter;
+  const alongAnchor = alongCenter - getVerticalBoardStraddleOffset(settings, layer);
   const alongStart = usesCenteredBoardLayout(settings, layer)
     ? alignBoardGridStart(alongMin, alongStep, [alongAnchor])
     : alongMin;
