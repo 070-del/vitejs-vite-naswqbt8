@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import {planStock,withStockResults,getScrewsPerSheet,calculateScrewCount,formatMaterialValue,getScrewResultName} from '../src/material-stock.mjs';
+for(const [length,stock,count,expected,leftover] of [[7000,5000,1,2,3000],[7000,4000,1,2,1000],[10000,5000,2,4,0],[5000,5000,3,3,0],[4000,5000,1,1,1000],[12000,5000,1,3,3000]]){
+  const plan=planStock(`${length} × ${count}本`,stock);
+  assert.equal(plan.stockCount,expected);
+  assert.equal(plan.groups[0].leftover,leftover);
+  assert.equal(plan.joints,expected-count);
+  assert.equal(plan.groups[0].pieces.reduce((a,b)=>a+b,0),length);
+}
+const input=[{name:'Cチャンネル',value:'7000 × 2本'},{name:'ダブルバー',value:'7000 × 3本 4500 × 1本'},{name:'シングルバー',value:'4000 × 1本'},{name:'シングルクリップ',value:'10 コ'},{name:'ボード',value:'4 枚',category:'board'}];
+const r=withStockResults(input,{barStockLength:5000,channelStockLength:4000});
+assert.deepEqual(r.slice(4,7).map(x=>[x.name,x.value]),[['ダブルジョイント','3 コ'],['シングルジョイント','0 コ'],['チャンネルジョイント','2 コ']]);
+assert.equal(r[7].name,'ボード');assert.equal(input[0].value,'7000 × 2本');
+assert.deepEqual(r.slice(0,3).map(x=>x.value),input.slice(0,3).map(x=>x.value));
+assert.deepEqual(r.slice(0,3).map(x=>x.stockSettingKey),['channelStockLength','doubleBarStockLength','singleBarStockLength']);
+assert.equal(planStock('寸法未入力',5000).stockCount,0);
+const longRuns=input.map(item=>['Cチャンネル','ダブルバー','シングルバー'].includes(item.name)?{...item,value:'9000 × 2本'}:item);
+const joints=settings=>withStockResults(longRuns,settings).filter(item=>item.category==='joint').map(item=>item.value);
+assert.deepEqual(joints({}),['2 コ','2 コ','4 コ']);
+assert.deepEqual(joints({doubleBarStockLength:4000}),['4 コ','2 コ','4 コ']);
+assert.deepEqual(joints({singleBarStockLength:4000}),['2 コ','4 コ','4 コ']);
+assert.deepEqual(joints({channelStockLength:5000}),['2 コ','2 コ','2 コ']);
+assert.deepEqual(joints({channelStockLength:3000,doubleBarStockLength:3600,singleBarStockLength:10000}),['4 コ','0 コ','4 コ']);
+assert.equal(planStock('7000 × 2本',2500).joints,4);
+assert.equal(planStock('7000 × 2本',7000).joints,0);
+for(const value of [0,-1000,NaN,Infinity]) assert.throws(()=>planStock('7000 × 1本',value));
+console.log('Stock preview: 6 length cases, mixed lengths, joint order and input preservation passed.');
+assert.equal(calculateScrewCount(32),1120);
+assert.equal(calculateScrewCount(32,{screwsPerSheet:40}),1280);
+assert.equal(calculateScrewCount(0),0);
+assert.equal(getScrewResultName({barPitch:227,barW:455}),'カラービス');
+assert.equal(getScrewResultName({barPitch:303,barW:910}),'カラービス');
+assert.equal(getScrewResultName({barPitch:303,barW:1820}),'ビス');
+assert.equal(getScrewResultName({barPitch:364,barW:1820}),'ビス');
+assert.equal(getScrewResultName({}),'ビス');
+for(const [settings,expected] of [[{barPitch:227,barW:455},14],[{barPitch:303,barW:910},18],[{barPitch:303,barW:1820},35],[{barPitch:364,barW:1820},35]]){
+  assert.equal(getScrewsPerSheet(settings),expected);
+  assert.equal(calculateScrewCount(10,settings),expected*10);
+  assert.equal(getScrewsPerSheet({...settings,screwsPerSheet:20}),20);
+  for(const invalid of ['',0,-5,2.5,Infinity]) assert.equal(getScrewsPerSheet({...settings,screwsPerSheet:invalid}),expected);
+}
+for(const value of ['',0,-5,2.5,Infinity]) assert.equal(getScrewsPerSheet({screwsPerSheet:value}),35);
+console.log('Screw preview: default, custom count, zero boards and invalid inputs passed.');
+const display=(value,stockLength)=>formatMaterialValue({value,stockPlan:planStock(value,stockLength)});
+assert.equal(display('7000 × 9本',5000),'(7000)5000.2000 × 9本');
+assert.equal(display('7000 × 9本',4000),'(7000)4000.3000 × 9本');
+assert.equal(display('12000 × 2本',5000),'(12000)5000.5000.2000 × 2本');
+assert.equal(display('5000 × 1本',5000),'5000 × 1本');
+assert.equal(display('7000 × 2本　3000 × 1本',3500),'(7000)3500.3500 × 2本　3000 × 1本');
+assert.equal(formatMaterialValue({value:'1120 発'}),'1120 発');
+console.log('Material display: split lengths, exact lengths, mixed groups and unchanged non-material rows passed.');

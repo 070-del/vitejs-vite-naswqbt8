@@ -4,11 +4,12 @@ import vm from 'node:vm';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { transform } from 'esbuild';
+import { getBoardLabelRegions } from '../src/board-labels.mjs';
 
 const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
   .replace(/^import[\s\S]*?;\r?\n/gm, '');
 const { code } = await transform(source, { loader: 'jsx', format: 'cjs' });
-const context = { module: { exports: {} }, React, useMemo: React.useMemo, useId: React.useId };
+const context = { module: { exports: {} }, React, useMemo: React.useMemo, useId: React.useId, getBoardLabelRegions };
 vm.runInNewContext(code + '\nthis.api = { CleanShape, makeShape, getBoardLabelFontSize };', context);
 const { CleanShape, makeShape, getBoardLabelFontSize } = context.api;
 const shape = makeShape([{x:0,y:0},{x:10000,y:0},{x:10000,y:20000},{x:0,y:20000}]);

@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { transform } from 'esbuild';
+import * as materialStock from '../src/material-stock.mjs';
 
 // Execute the actual application calculations without mounting React/native APIs.
 const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
   .replace(/^import[\s\S]*?;\r?\n/gm, '');
 const { code } = await transform(source, { loader: 'jsx', format: 'cjs' });
-const context = { module: { exports: {} } };
+const context = { module: { exports: {} }, ...materialStock };
 vm.runInNewContext(code + '\nthis.api = { makeAreaResult, formatGlueAmount, usesCenteredBoardLayout, makeLegacyV38BarPlan, constrainDiagramView, getDiagramGestureView, makeBoardLayout, makeBarPlan, makeShape, getVerticalResultBarDimensionTexts, getResultBarDimensionTexts, makeBoardResult, getBoardLabelPoint, pointInPolygon, makeResults, finalizeResultList, getResultDiagramPages, formatSheetBundle };', context);
 const api = context.api;
 const points = [{x:0,y:0},{x:2000,y:0},{x:2000,y:2300},{x:3900,y:2300},{x:3900,y:700},{x:6000,y:700},{x:6000,y:5200},{x:0,y:5200},{x:0,y:0}];
@@ -243,7 +244,7 @@ assert.equal(api.makeAreaResult([]).value, '寸法未入力');
 assert.equal(materialResults.at(-1).value, '7.67 坪　25.36 ㎡');
 assert.equal(api.makeResults(dims, squareSettings, shape).at(-1).value, materialResults.at(-1).value, 'Board choice must not change room area');
 const legacy = [{name:'ボード',value:'9 枚（4坪+1枚）',category:'board'},{name:'岩綿',value:'151 枚（8坪+7枚）',category:'finishBoard'}];
-const restored = api.finalizeResultList(legacy, points);
+const restored = api.finalizeResultList(legacy, points, true);
 assert.equal(restored.find(item=>item.category==='board').value, '9 枚');
 assert.equal(restored.find(item=>item.category==='finishBoard').value, '151 枚');
 assert.equal(restored.find(item=>item.name==='ビス').value, '72 発');
