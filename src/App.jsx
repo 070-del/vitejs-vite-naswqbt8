@@ -16,6 +16,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import "./App.css";
 import "./AppTheme.css";
+import "./material-stock.css";
+import { StockLengthInput, ScrewsPerSheetInput, BoltMemoInput } from "./MaterialInputs.jsx";
+import { withStockResults, calculateScrewCount, getScrewResultName, getScrewsPerSheet, formatMaterialValue, hasNonZeroQuantity } from "./material-stock.mjs";
+import { getBoardLabelRegions } from "./board-labels.mjs";
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Eraser, Home, Menu, MessageCircle, Minus, Plus, Ruler, Save, Share2 } from "lucide-react";
 import {
   tapHaptic,
@@ -102,6 +106,9 @@ export default function App() {
   const [dims, setDims] = useState({});
 
   const [settings, setSettings] = useState({
+    doubleBarStockLength: 5000,
+    singleBarStockLength: 5000,
+    channelStockLength: 4000,
     barPitch: 303,
     barW: 1820,
     barType: "3×6ボード",
@@ -498,7 +505,7 @@ export default function App() {
     successHaptic();
   };
 
-  const results = makeResults(dims, settings, shape);
+  const results = useMemo(() => makeMaterialResults(dims, settings, shape), [dims, settings, shape]);
 
   const loadSavedRooms = async () => {
     const rooms = [];
@@ -573,6 +580,7 @@ export default function App() {
       settings,
       shape,
       results,
+      materialResultsVersion: 2,
       savedAt: new Date().toLocaleString(),
     };
 
@@ -616,7 +624,10 @@ export default function App() {
 
   const handleShareResults = async () => {
     await tapHaptic();
-    const lines = results.map((item) => `${item.name}: ${item.value}`);
+    const lines = results.filter(hasNonZeroQuantity).map((item) => {
+      const detail = getMaterialSettingText(item, settings);
+      return `${item.name}${detail ? ` (${detail})` : ""}: ${formatDisplayedResultValue(item)}`;
+    });
     const text = [
       `【${projectName || "未入力"}】軽天計算結果`,
       "",
@@ -852,37 +863,33 @@ export default function App() {
           </div>
 
           <section className="resultCard">
-            {results.map((item) => (
+            {results.filter(hasNonZeroQuantity).map((item) => (
               <div
                 className={[
                   "resultRow",
+                  item.stockPlan ? "materialLengthResultRow" : "",
+                  ["ビス", "カラービス", "ボルト"].includes(item.name) ? "jointStockResultRow" : "",
                   item.category === "board" ? "boardSectionRow" : "",
                   item.category === "area" ? "areaSectionRow" : "",
-                  item.name === "ビス" ? "screwResultRow" : "",
+                  ["ビス", "カラービス"].includes(item.name) ? "screwResultRow" : "",
                 ].filter(Boolean).join(" ")}
                 key={item.name}
               >
-                <strong>{item.name}</strong>
-                <span className="resultValue">
-                  {item.name === "ビス" && isGyptoneSetting(settings) && (
-                    <span className="screwSpecToggle" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        className={(settings.screwSpec || "general") === "general" ? "active" : ""}
-                        onClick={() => setSettings({ ...settings, screwSpec: "general" })}
-                      >
-                        一般
-                      </button>
-                      <button
-                        type="button"
-                        className={settings.screwSpec === "public" ? "active" : ""}
-                        onClick={() => setSettings({ ...settings, screwSpec: "public" })}
-                      >
-                        公共
-                      </button>
+                {item.stockPlan ? (
+                  <div className="materialLengthName">
+                    <strong>{item.name}</strong>
+                    <StockLengthInput settings={settings} setSettings={setSettings} settingKey={item.stockSettingKey} label={item.name} />
+                    <span className="materialPurchaseCount" aria-label={`${item.name}の材料合計`}>
+                      {item.stockPlan.purchaseCount === null ? "算出不可" : `計${item.stockPlan.purchaseCount}本`}
                     </span>
-                  )}
-                  {splitResultValue(item.value).map((part, index) => (
+                  </div>
+                ) : ["ビス", "カラービス"].includes(item.name) ? (
+                  <div className="jointStockName"><strong>{item.name}</strong><ScrewsPerSheetInput settings={settings} setSettings={setSettings} /></div>
+                ) : item.name === "ボルト" ? (
+                  <div className="jointStockName"><strong>{item.name}</strong><BoltMemoInput settings={settings} setSettings={setSettings} /></div>
+                ) : <strong>{item.name}</strong>}
+                <span className="resultValue">
+                  {splitResultValue(formatDisplayedResultValue(item)).map((part, index) => (
                     <span className="resultPart" key={`${item.name}-${index}`}>
                       {part}
                     </span>
@@ -916,6 +923,7 @@ export default function App() {
               <Home size={18} /> 最初に戻る
             </button>
           </div>
+          <p className="materialSpecFootnote">チャンネル継手：15mm／か所<br />5mバー材の実寸：5005mm</p>
         </main>
       )}
 
@@ -1203,6 +1211,7 @@ function BarPitchSelector({ settings, setSettings }) {
       barPitch: option.pitch,
       barW: option.w,
       barType: option.name,
+      screwsPerSheet: settings.barPitch === option.pitch && settings.barW === option.w ? settings.screwsPerSheet : undefined,
       bisPitch: option.pitch,
       // 基本303(w1820)は芯割り/芯跨ぎを使わないので、
       // 内部状態は基本の芯割りへ戻しておく。
@@ -1692,7 +1701,9 @@ function AnswerHistory() {
 function SavedRoomDetail({ room, onClose, onRename }) {
   const roomShape = room.shape;
   const roomDims = room.dims || {};
-  const roomResults = finalizeResultList(room.results || [], buildPolygonFromDims(roomDims, roomShape));
+  const roomResults = room.materialResultsVersion === 2
+    ? room.results || []
+    : finalizeResultList(room.results || [], buildPolygonFromDims(roomDims, roomShape), true);
 
   return (
     <div className="detailOverlay">
@@ -1718,7 +1729,7 @@ function SavedRoomDetail({ room, onClose, onRename }) {
         )}
 
         <section className="resultCard detailResultCard">
-          {roomResults.map((item) => (
+          {roomResults.filter(hasNonZeroQuantity).map((item) => (
             <div
               className={[
                 "resultRow",
@@ -1727,9 +1738,9 @@ function SavedRoomDetail({ room, onClose, onRename }) {
               ].filter(Boolean).join(" ")}
               key={`detail-${item.name}`}
             >
-              <strong>{item.name}</strong>
+              <div><strong>{item.name}</strong>{room.materialResultsVersion === 2 && <small className="savedMaterialSetting">{getMaterialSettingText(item, room.settings || {})}</small>}</div>
               <span className="resultValue">
-                {splitResultValue(item.value).map((part, index) => (
+                {splitResultValue(formatDisplayedResultValue(item)).map((part, index) => (
                   <span className="resultPart" key={`${item.name}-${index}`}>
                     {part}
                   </span>
@@ -2070,7 +2081,7 @@ function CleanShape({
         />
 
         {showBoardLayout &&
-          boardTiles.map((tile, index) => {
+          boardTiles.flatMap(tile => getBoardLabelRegions(tile, polygonForLabels, pointInPolygon)).map((tile, index) => {
             const labelPoint = getBoardLabelPoint(tile, polygonForLabels);
             if (!labelPoint) return null;
             const labelX = labelPoint.x;
@@ -3889,7 +3900,7 @@ function normalizeResultList(list, polygonPoints) {
   };
   const boardItem = list.find((item) => item.category === "board" || item.name === "ボード");
   const finishBoardItem = list.find((item) => item.category === "finishBoard");
-  const screwItem = list.find((item) => item.name === "ビス");
+  const screwItem = list.find((item) => ["ビス", "カラービス"].includes(item.name));
   const areaItem = polygonPoints !== undefined
     ? makeAreaResult(polygonPoints)
     : list.find((item) => item.category === "area");
@@ -3909,7 +3920,7 @@ function normalizeResultList(list, polygonPoints) {
     ...(finishBoardItem ? [{ ...finishBoardItem }] : []),
     {
       name: "ビス",
-      value: screwItem?.value || get("ビス"),
+      value: screwItem?.value || get("ビス", "カラービス"),
       category: "boardAccessory",
       settings: screwItem?.settings || {},
     },
@@ -3921,7 +3932,7 @@ function normalizeResultList(list, polygonPoints) {
   ];
 }
 
-function finalizeResultList(list, polygonPoints) {
+function finalizeResultList(list, polygonPoints, preserveLegacyScrews = false) {
   const normalized = normalizeResultList(list, polygonPoints);
 
   const getValue = (name) => {
@@ -3960,10 +3971,12 @@ function finalizeResultList(list, polygonPoints) {
     }
 
     if (item.name === "ビス") {
-      const screwCount = isGyptoneSetting(item.settings || {}) || isGyptoneBoardName(boardItem?.name)
-        ? boardCount * getGyptoneScrewsPerSheet(item.settings || {})
-        : boardCount * 8;
-      return { ...item, value: `${screwCount} 発` };
+      if (preserveLegacyScrews) {
+        const count = extractFirstNumber(item.value) || boardCount * (isGyptoneBoardName(boardItem?.name) ? getGyptoneScrewsPerSheet(item.settings || {}) : 8);
+        return { ...item, value: `${count} 発` };
+      }
+      const screwCount = calculateScrewCount(boardCount, item.settings || {});
+      return { ...item, name: getScrewResultName(item.settings || {}), value: `${screwCount} 発` };
     }
 
     if (finishBoardItem && item.name === "ピン") {
@@ -4024,6 +4037,30 @@ function makeAreaResult(points) {
     ? `${(squareMeters * 121 / 400).toFixed(2)} 坪　${squareMeters.toFixed(2)} ㎡`
     : "寸法未入力";
   return { name: "面積", value, category: "area" };
+}
+
+function formatDisplayedResultValue(item) {
+  const perTsubo = { "岩綿": 18, "1.5×3ジプトーン": 8, "3×3ジプトーン": 4 }[item.name];
+  if (perTsubo && /^\d+\s*枚/.test(item.value)) {
+    const count = extractFirstNumber(item.value);
+    return `(${count}枚)${formatSheetBundle(count, perTsubo).replace("+", "＋")}`;
+  }
+  return formatMaterialValue(item);
+}
+
+function getMaterialSettingText(item, settings) {
+  if (item.stockPlan) {
+    const total = item.stockPlan.purchaseCount === null ? "算出不可" : `計${item.stockPlan.purchaseCount}本`;
+    return `${item.stockPlan.nominalStockLength / 1000}m / ${total}`;
+  }
+  if (item.name === "ボルト" && settings.boltMemoMm !== "" && settings.boltMemoMm != null) return `${settings.boltMemoMm}mm`;
+  if (["ビス", "カラービス"].includes(item.name)) return `${getScrewsPerSheet(settings)}発/枚`;
+  return "";
+}
+
+function makeMaterialResults(dims, settings, shape) {
+  const points = buildPolygonFromDims(dims, shape) || [];
+  return withStockResults(makeResults(dims, settings, shape), settings, makeBarPlan(points, settings), makeCeilingChannelPlan(points, dims, shape, 910, 100));
 }
 
 function makeResults(dims, settings, shape) {
@@ -5385,7 +5422,8 @@ function makeBarPositionsFromCenter(box, barAxis, pitch = 303, doublePitch = 182
     const isDouble =
       !isCenter && doublePositions.some((doubleValue) => Math.abs(doubleValue - rounded) <= doubleTol);
 
-    addItem(rounded, isCenter ? centerBarType : isDouble ? "double" : "single");
+    // W positions are added separately; rounded base-pitch positions must not duplicate them.
+    if (!isDouble) addItem(rounded, isCenter ? centerBarType : "single");
   });
 
   doublePositions.forEach((value) => {

@@ -1,0 +1,10 @@
+.selectedDesign .resultRow.jointStockResultRow{grid-template-columns:minmax(0,1fr) auto;align-items:center}.jointStockName{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}.jointStockName strong{letter-spacing:0}
+.stockLengthField{display:inline-flex;align-items:center;gap:4px;width:68px;height:30px;box-sizing:border-box;border:1px solid #cbdcd3;border-radius:4px;background:#f3f7f5;padding:0 6px;flex-shrink:0;color:#245e4e;font-size:12px;font-weight:500;letter-spacing:0}.selectedDesign .stockLengthField input{appearance:textfield;min-width:0;width:100%;height:28px;margin:0;padding:0;border:0!important;border-radius:0;background:transparent!important;box-shadow:none!important;color:#245e4e;font-size:16px;line-height:28px;text-align:center;outline:none}.stockLengthField input::-webkit-inner-spin-button,.stockLengthField input::-webkit-outer-spin-button{appearance:none;margin:0}.stockLengthField:focus-within{outline:2px solid #2b795f;outline-offset:2px}
+.screwCountField{width:94px}.screwCountField span{white-space:nowrap;flex-shrink:0}
+.boltMemoField{width:94px}.boltMemoField span{white-space:nowrap;flex-shrink:0}
+.selectedDesign .resultRow.materialLengthResultRow{grid-template-columns:max-content minmax(0,1fr);align-items:center}.materialLengthName{display:flex;align-items:center;gap:8px}.materialLengthName strong{letter-spacing:0}.materialLengthResultRow .resultPart{overflow-wrap:anywhere}@media(max-width:480px){.selectedDesign .resultRow.materialLengthResultRow{grid-template-columns:minmax(0,1fr);gap:8px}.materialLengthResultRow .resultValue{grid-column:1/-1}}
+.materialSpecFootnote{margin:16px 0 0;font-size:11px;line-height:1.7;font-weight:400;color:#647b6d;letter-spacing:0;text-align:left}
+.materialPurchaseCount{font-size:14px;font-weight:600;color:#245e4e;letter-spacing:0;white-space:nowrap}
+.materialLengthName{flex-wrap:wrap}
+.savedMaterialSetting{display:block;margin-top:5px;font-size:12px;color:#245e4e;font-weight:400}
+@media(max-width:680px){.selectedDesign .resultRow.materialLengthResultRow{grid-template-columns:minmax(0,1fr);gap:8px}.materialLengthResultRow .resultValue{grid-column:1/-1}}
