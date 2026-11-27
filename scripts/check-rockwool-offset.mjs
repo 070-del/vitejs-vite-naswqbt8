@@ -3,11 +3,12 @@ import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {parse} from '@babel/parser';
 import {transformSync} from 'esbuild';
+import * as finishBoard from '../src/finish-board-offcuts.mjs';
 const original=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
 function load(source){
   const ast=parse(source,{sourceType:'module',plugins:['jsx']});
   const declarations=ast.program.body.filter(node=>node.type==='FunctionDeclaration' || node.type==='VariableDeclaration').map(node=>source.slice(node.start,node.end)).join('\n');
-  return runInNewContext(transformSync(declarations,{loader:'jsx'}).code+'\n({getVerticalBoardStraddleOffset,getBoardGridStart,makeShape,getVerticalResultBarDimensionTexts})');
+  return runInNewContext(transformSync(declarations,{loader:'jsx'}).code+'\n({getVerticalBoardStraddleOffset,getBoardGridStart,makeShape,getVerticalResultBarDimensionTexts})', {...finishBoard});
 }
 const after=load(original);
 const base={barPitch:364,barW:1820,centerBarType:'single',verticalCenterBarType:'double'};

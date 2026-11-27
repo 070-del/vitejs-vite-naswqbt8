@@ -1,3 +1,4 @@
+import * as finishBoard from '../src/finish-board-offcuts.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -8,7 +9,7 @@ import * as materialStock from '../src/material-stock.mjs';
 const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
   .replace(/^import[\s\S]*?;\r?\n/gm, '');
 const { code } = await transform(source, { loader: 'jsx', format: 'cjs' });
-const context = { module: { exports: {} }, ...materialStock };
+const context = { ...finishBoard, module: { exports: {} }, ...materialStock };
 vm.runInNewContext(code + '\nthis.api = { makeAreaResult, formatGlueAmount, usesCenteredBoardLayout, makeLegacyV38BarPlan, constrainDiagramView, getDiagramGestureView, makeBoardLayout, makeBarPlan, makeShape, getVerticalResultBarDimensionTexts, getResultBarDimensionTexts, makeBoardResult, getBoardLabelPoint, pointInPolygon, makeResults, finalizeResultList, getResultDiagramPages, formatSheetBundle };', context);
 const api = context.api;
 const points = [{x:0,y:0},{x:2000,y:0},{x:2000,y:2300},{x:3900,y:2300},{x:3900,y:700},{x:6000,y:700},{x:6000,y:5200},{x:0,y:5200},{x:0,y:0}];
@@ -255,17 +256,17 @@ console.log('PASS: polygon area in tsubo/m2, saved-result migration, and sheet-o
 
 const startView={scale:1,x:0,y:0};
 const pinch=api.getDiagramGestureView(startView,[{x:100,y:100},{x:200,y:100}],[{x:50,y:100},{x:250,y:100}],300,200);
-assert.equal(pinch.scale,2);
+assert.equal(pinch.scale,1);
 assert.equal(pinch.x,0);
 assert.equal(pinch.y,0);
 const offCenter=api.getDiagramGestureView(startView,[{x:50,y:50},{x:150,y:50}],[{x:0,y:50},{x:200,y:50}],300,200);
-assert.equal(offCenter.x,50,'Pinch must retain the point under its midpoint');
-assert.equal(offCenter.y,50);
-const pan=api.getDiagramGestureView(pinch,[{x:150,y:100}],[{x:180,y:120}],300,200);
+assert.ok(offCenter.x===0,'Two-finger movement must not zoom');
+assert.ok(offCenter.y===0);
+const pan=api.getDiagramGestureView({scale:2,x:0,y:0},[{x:150,y:100}],[{x:180,y:120}],300,200);
 assert.equal(pan.x,30);
 assert.equal(pan.y,20);
 const bounded=api.constrainDiagramView({scale:30,x:4000,y:-4000},300,200);
 assert.equal(bounded.scale,16); assert.equal(bounded.x,2250); assert.equal(bounded.y,-1500);
 const reset=api.constrainDiagramView({scale:0.5,x:200,y:300},300,200);
 assert.equal(reset.scale,1); assert.ok(reset.x===0 && reset.y===0);
-console.log('PASS: diagram-only pinch scaling, focal point, panning, zoom limits, and reset.');
+console.log('PASS: diagram panning without pinch zoom, zoom limits, and reset.');
