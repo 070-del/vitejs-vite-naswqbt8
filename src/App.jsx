@@ -20,7 +20,8 @@ import "./material-stock.css";
 import { StockLengthInput, ScrewsPerSheetInput, BoltMemoInput } from "./MaterialInputs.jsx";
 import { withStockResults, calculateScrewCount, getScrewResultName, getScrewsPerSheet, formatMaterialValue, hasNonZeroQuantity } from "./material-stock.mjs";
 import { getBoardLabelRegions } from "./board-labels.mjs";
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Eraser, Home, Menu, MessageCircle, Minus, Plus, Ruler, Save, Share2 } from "lucide-react";
+import { makeFinishBoardSource, getFinishBoardRequiredEdges, findFinishBoardStock, addFinishBoardOffcuts } from "./finish-board-offcuts.mjs";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Eraser, Home, Menu, MessageCircle, Minus, Plus, RotateCcw, Ruler, Save, Share2 } from "lucide-react";
 import {
   tapHaptic,
   successHaptic,
@@ -740,11 +741,7 @@ export default function App() {
       {page === 3 && (
         <main className="page resultPage">
           <div
-            className={
-              showBoardLayout
-                ? "resultShapeControlRow boardLayoutActive"
-                : "resultShapeControlRow"
-            }
+            className={["resultShapeControlRow", showBoardLayout ? "boardLayoutActive" : "", showCenterControls ? "resultShapeWithControls" : ""].filter(Boolean).join(" ")}
             role="button"
             tabIndex={0}
             aria-label={isRockWoolSetting(settings) ? "図形をタップして下地・ボード・岩綿を切り替える" : "図形をタップしてボード割付表示を切り替える"}
@@ -754,19 +751,6 @@ export default function App() {
                 e.preventDefault();
                 nextResultDiagram();
               }
-            }}
-            style={{
-              position: "relative",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 16,
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-              maxWidth: "100%",
-              minHeight: showCenterControls ? 315 : undefined,
-              marginBottom: 12,
-              overflow: "visible",
             }}
           >
             <ZoomableDiagram key={`${activeDiagramPage}-${shape.type}`}>
@@ -793,57 +777,11 @@ export default function App() {
                 className="resultSideControls"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-start",
-                  gap: 7,
-                  flex: "0 0 205px",
-                  maxWidth: "100%",
-                  zIndex: 3,
-                }}
               >
                 <CenterBarTypeToggle settings={settings} setSettings={setSettings} compact direction="horizontal" />
-                <div
-                  className="barDimensionTextList"
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-start",
-                    gap: 5,
-                    fontSize: 10,
-                    fontWeight: 900,
-                    color: "#334155",
-                    lineHeight: 1.3,
-                    whiteSpace: "normal",
-                    wordBreak: "keep-all",
-                  }}
-                >
-                  {getResultBarDimensionTexts(dims, shape, settings, boardLayer).map((text) => (
-                    <div key={text}>{text}</div>
-                  ))}
-                </div>
+                <BarDimensionTextList texts={getResultBarDimensionTexts(dims, shape, settings, boardLayer)} />
                 <CenterBarTypeToggle settings={settings} setSettings={setSettings} compact direction="vertical" />
-                <div
-                  className="barDimensionTextList"
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-start",
-                    gap: 5,
-                    fontSize: 10,
-                    fontWeight: 900,
-                    color: "#334155",
-                    lineHeight: 1.3,
-                    whiteSpace: "normal",
-                    wordBreak: "keep-all",
-                  }}
-                >
-                  {getVerticalResultBarDimensionTexts(dims, shape, settings, boardLayer).map((text) => (
-                    <div key={text}>{text}</div>
-                  ))}
-                </div>
+                <BarDimensionTextList texts={getVerticalResultBarDimensionTexts(dims, shape, settings, boardLayer)} />
                 {getBoardSizeOption(settings).key === "910x910" && (
                   <div className="boardPatternToggle" role="group" aria-label="3×3ジプトーンの貼り方">
                     {[["straight", "芋貼り"], ["brick", "レンガ貼り"]].map(([value, label]) => (
@@ -1302,6 +1240,13 @@ function getVerticalResultBarDimensionTexts(dims, shape, settings, layer = "boar
   ];
 }
 
+function BarDimensionTextList({ texts }) {
+  return <div className="barDimensionTextList">{texts.map(text => {
+    const [label, ...value] = text.split(" ");
+    return <div className="barDimensionEntry" key={text}><span>{label}</span><strong>{value.join(" ")}</strong></div>;
+  })}</div>;
+}
+
 function CenterBarTypeToggle({ settings, setSettings, compact = false, direction = "horizontal" }) {
   const settingKey = direction === "vertical" ? "verticalCenterBarType" : "centerBarType";
   const directionLabel = direction === "vertical" ? "縦" : "横";
@@ -1327,7 +1272,7 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false, direction
 
   return (
     <section
-      className={compact ? "" : "settingCard"}
+      className={compact ? "centerBarTypeToggle" : "settingCard"}
       role="group"
       aria-label={`${directionLabel}方向の芯割り・芯跨ぎ`}
       style={{
@@ -1340,7 +1285,7 @@ function CenterBarTypeToggle({ settings, setSettings, compact = false, direction
         flex: "0 0 auto",
       }}
     >
-      <div style={{ display: "flex", gap: compact ? 6 : 8, alignItems: "center" }}>
+      <div className="centerBarTypeButtons" style={{ display: "flex", gap: compact ? 6 : 8, alignItems: "center" }}>
         <span style={{ fontSize: compact ? 11 : 13, fontWeight: 900 }}>{directionLabel}</span>
         <button
           type="button"
@@ -1814,17 +1759,15 @@ function constrainDiagramView(view, width, height) {
 }
 
 function getDiagramGestureView(base, start, current, width, height) {
+  if (!start.length || !current.length) return base;
   const center = (points) => ({ x: points.reduce((n,p) => n+p.x,0)/points.length, y: points.reduce((n,p) => n+p.y,0)/points.length });
   const from = center(start);
   const to = center(current);
-  const distance = (points) => Math.hypot(points[1].x-points[0].x, points[1].y-points[0].y);
-  const ratio = start.length === 2 ? distance(current) / Math.max(1, distance(start)) : 1;
-  const scale = Math.max(1, Math.min(16, base.scale * ratio));
-  const factor = scale / base.scale;
+  // Touches only move the diagram. Only the toolbar changes its scale.
   return constrainDiagramView({
-    scale,
-    x: to.x - width/2 - (from.x - width/2 - base.x)*factor,
-    y: to.y - height/2 - (from.y - height/2 - base.y)*factor,
+    scale: base.scale,
+    x: base.x + to.x - from.x,
+    y: base.y + to.y - from.y,
   }, width, height);
 }
 
@@ -1846,7 +1789,14 @@ function ZoomableDiagram({ children }) {
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(element);
-    return () => observer.disconnect();
+    // Block Safari's native pinch zoom only over the diagram, not the page.
+    const preventNativeZoom = (event) => { if (event.cancelable) event.preventDefault(); };
+    const gestureEvents = ["touchmove", "gesturestart", "gesturechange", "gestureend"];
+    gestureEvents.forEach(name => element.addEventListener(name, preventNativeZoom, { passive: false }));
+    return () => {
+      observer.disconnect();
+      gestureEvents.forEach(name => element.removeEventListener(name, preventNativeZoom));
+    };
   }, []);
   const pointers = useRef(new Map());
   const gesture = useRef(null);
@@ -1862,17 +1812,19 @@ function ZoomableDiagram({ children }) {
   };
   const finish = (e) => {
     if (!pointers.current.has(e.pointerId)) return;
-    if (didDrag.current || pointers.current.size > 1) suppressClickUntil.current = Date.now()+500;
+    if (didDrag.current || pointers.current.size > 1 || e.type !== "pointerup") suppressClickUntil.current = Date.now()+500;
     pointers.current.delete(e.pointerId);
     rebase();
   };
   const zoom = (scale) => {
     const { width, height } = viewport.current.getBoundingClientRect();
     update(constrainDiagramView({ ...viewRef.current, scale }, width, height));
+    rebase();
   };
+  const reset = () => { update(initial); rebase(); };
   return (
     <div className="diagramZoomPanel">
-      <div className="diagramZoomViewport" ref={viewport} aria-label="図形：2本指で拡大・縮小、拡大後はドラッグで移動"
+      <div className="diagramZoomViewport" ref={viewport} aria-label="図形：ドラッグで移動。拡大・縮小は下のボタンで操作"
         onPointerDown={(e) => {
           if (e.pointerType === "mouse" && e.button !== 0) return;
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -1896,15 +1848,18 @@ function ZoomableDiagram({ children }) {
         }}
         onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}
         onClickCapture={(e) => {
-          if (Date.now() < suppressClickUntil.current) { e.stopPropagation(); e.preventDefault(); }
+          // A small finger movement must not switch layers and reset the zoom.
+          if (viewRef.current.scale > 1 || Date.now() < suppressClickUntil.current) { e.stopPropagation(); e.preventDefault(); }
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
       >
         <div className="diagramZoomContent">{children({ ...view, viewportWidth })}</div>
       </div>
       <div className="diagramZoomTools" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
         <button type="button" aria-label="図形を縮小" title="図形を縮小" disabled={view.scale <= 1} onClick={() => zoom(view.scale / 1.5)}><Minus size={16} /></button>
-        <button type="button" aria-label="図形の拡大をリセット" title="全体表示に戻す" onClick={() => update(initial)}>{Math.round(view.scale*100)}%</button>
+        <output className="diagramZoomPercent" aria-label="図形の表示倍率">{Math.round(view.scale*100)}%</output>
         <button type="button" aria-label="図形を拡大" title="図形を拡大" disabled={view.scale >= 16} onClick={() => zoom(view.scale * 1.5)}><Plus size={16} /></button>
+        <button type="button" aria-label="図形を全体表示に戻す" title="全体表示に戻す" onClick={reset}><RotateCcw size={16} /></button>
       </div>
     </div>
   );
@@ -4161,6 +4116,7 @@ function makeBoardLayout(points, barAxis = "H", settings = {}, layer = "board") 
   const tileSize = getBoardTileSizeForBarAxis(barAxis, board);
   const gridStart = getBoardGridStart(box, barAxis, tileSize, closed, settings, layer);
   const brickOffset = getBrickBoardOffset(barAxis, board, settings);
+  const preserveFinishEdges = ["300x600", "455x910", "910x910"].includes(board.key);
   let nextBoardNo = 1;
   let stockUseCount = 0;
 
@@ -4187,9 +4143,27 @@ function makeBoardLayout(points, barAxis = "H", settings = {}, layer = "board") 
       tile.usedHeight = usedHeight;
       tile.insideArea = insideArea;
 
-      const stockMatch = findStockPiece(stock, usedWidth, usedHeight);
+      const requiredEdges = preserveFinishEdges
+        ? getFinishBoardRequiredEdges(tile, usedRect, tileSize) : null;
+      const stockMatch = preserveFinishEdges
+        ? findFinishBoardStock(stock, usedWidth, usedHeight, requiredEdges)
+        : findStockPiece(stock, usedWidth, usedHeight);
 
-      if (stockMatch) {
+      if (preserveFinishEdges) {
+        const piece = stockMatch
+          ? stock.splice(stockMatch.index, 1)[0]
+          : makeFinishBoardSource(tileSize, nextBoardNo++);
+        const cut = stockMatch?.usedRect || {
+          x: Math.max(0, usedRect.x - tile.x), y: Math.max(0, usedRect.y - tile.y),
+          width: usedWidth, height: usedHeight,
+        };
+        tile.boardNo = piece.boardNo;
+        tile.fromStock = Boolean(stockMatch);
+        if (stockMatch) stockUseCount += 1;
+        tile.sourceRect = { x: piece.sourceX + cut.x, y: piece.sourceY + cut.y, width: cut.width, height: cut.height };
+        tile.requiredFactoryEdges = requiredEdges;
+        addFinishBoardOffcuts(stock, piece, cut);
+      } else if (stockMatch) {
         const piece = stock.splice(stockMatch.index, 1)[0];
         tile.boardNo = piece.boardNo;
         tile.fromStock = true;

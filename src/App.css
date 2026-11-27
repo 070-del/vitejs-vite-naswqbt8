@@ -259,6 +259,13 @@ button {
 }
 
 .resultShapeControlRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 12px;
   cursor: pointer;
   border-radius: 18px;
   outline: none;
@@ -275,6 +282,16 @@ button {
   margin: 0;
 }
 
+.resultShapeWithControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 35%);
+  gap: 10px 12px;
+}
+.resultShapeWithControls > .diagramZoomPanel { display: contents; }
+.resultShapeWithControls .diagramZoomViewport { grid-column: 1; grid-row: 1; min-width: 0; width: 100%; }
+.resultShapeWithControls .diagramZoomTools { grid-column: 1 / -1; grid-row: 2; margin-top: 0; }
+.resultShapeWithControls > .resultSideControls { grid-column: 2; grid-row: 1; }
+
 .diagramZoomViewport {
   overflow: hidden;
   border-radius: 20px;
@@ -287,7 +304,7 @@ button {
 .diagramZoomContent > .shapeWrap.small { max-width: 440px; margin: 0; padding: 0; }
 .diagramZoomContent svg { display: block; width: 100%; height: auto; }
 .diagramZoomTools { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
-.diagramZoomTools button {
+.diagramZoomTools button, .diagramZoomPercent {
   min-width: 38px;
   min-height: 36px;
   border: 1px solid #cbd5e1;
@@ -296,11 +313,20 @@ button {
   color: #334155;
   font-size: 13px;
   padding: 4px 8px;
-  cursor: pointer;
 }
+.diagramZoomTools button { cursor: pointer; touch-action: manipulation; }
+.diagramZoomPercent { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; font-variant-numeric: tabular-nums; }
 .diagramZoomTools button:disabled { opacity: 0.4; cursor: default; }
 
 .resultSideControls {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  z-index: 3;
   padding: 8px 0;
 }
 
@@ -328,8 +354,27 @@ button {
 }
 
 .resultSideControls .barDimensionTextList {
-  font-size: 12px !important;
-  line-height: 1.6 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #334155;
+}
+.barDimensionEntry { display: flex; flex-wrap: wrap; gap: 1px 4px; max-width: 100%; }
+.barDimensionEntry strong { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) {
+  .resultShapeWithControls { grid-template-columns: minmax(0, 1fr) 130px; column-gap: 8px; }
+  .resultSideControls .barDimensionTextList { font-size: 11px; line-height: 1.35; }
+  .resultSideControls .barDimensionEntry { display: grid; gap: 2px; }
+  .resultSideControls .barDimensionEntry > span { font-size: 10px; }
+  .resultSideControls .centerBarTypeToggle { width: 100%; }
+  .resultSideControls .centerBarTypeButtons { gap: 4px !important; }
+  .resultSideControls .centerBarTypeButtons button { flex: 1; min-width: 0 !important; min-height: 32px !important; padding: 4px !important; font-size: 11px !important; }
+  .resultSideControls .boardPatternToggle { gap: 4px; }
+  .resultSideControls .boardPatternToggle button { min-height: 32px; padding: 5px 6px; font-size: 10px; }
 }
 
 .boardLayoutActive {
